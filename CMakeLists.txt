@@ -8,7 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_compile_options(-g -Wall -Wextra -Wpedantic)
 
-add_executable(${PROJECT_NAME} src/main.cpp)
+add_executable(${PROJECT_NAME} src/main.cpp src/server.cpp)
 
 target_include_directories(${PROJECT_NAME} PRIVATE
   include/
@@ -16,8 +16,12 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 
 # Boost configuration
 find_package(Boost CONFIG REQUIRED COMPONENTS system)
-target_link_libraries(${PROJECT_NAME} PRIVATE Boost::system)
 target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
+
+# SPDLOG configuration
+find_package(spdlog REQUIRED)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE Boost::system spdlog::spdlog_header_only)
 
 # GTest configuration
 include(FetchContent)
