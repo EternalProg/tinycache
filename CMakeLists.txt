@@ -8,7 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_compile_options(-g -Wall -Wextra -Wpedantic)
 
-add_executable(${PROJECT_NAME} src/main.cpp src/server.cpp)
+add_executable(${PROJECT_NAME} src/main.cpp src/server.cpp src/session.cpp)
 
 target_include_directories(${PROJECT_NAME} PRIVATE
   include/
