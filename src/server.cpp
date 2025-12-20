@@ -1,10 +1,21 @@
 #include <spdlog/spdlog.h>
-#include <iostream>
+#include <boost/asio/detached.hpp>
+#include <boost/asio/signal_set.hpp>
+#include <memory>
 #include <server.hpp>
+#include <session.hpp>
+#include "utils.hpp"
 
 namespace tinycache {
+
 Server::Server(std::uint16_t port)
-    : acceptor_(io_context_, {boost::asio::ip::tcp::v4(), port}) {}
+    : acceptor_(io_context_, {boost::asio::ip::tcp::v4(), port}),
+      signals_(io_context_, SIGINT, SIGTERM) {
+  signals_.async_wait([&](auto, auto) {
+    spdlog::info("Server is closing");
+    io_context_.stop();
+  });
+}
 
 void Server::run() {
   co_spawn(io_context_, listener(), asio::detached);
@@ -14,10 +25,19 @@ void Server::run() {
 
 asio::awaitable<void> Server::listener() {
   for (;;) {
-    asio::ip::tcp::socket socket =
-        co_await acceptor_.async_accept(asio::use_awaitable);
+    auto [ec, socket] = co_await acceptor_.async_accept(kAsTuple);
+    if (ec) {
+      spdlog::error("Accept error: {}", ec.message());
+      continue;
+    }
     spdlog::info("New Connection");
-    //co_spawn(io_context_, echo(std::move(socket)), asio::detached);
+
+    auto session = std::make_shared<Session>(std::move(socket));
+
+    co_spawn(
+        io_context_,
+        [session]() -> asio::awaitable<void> { co_await session->run(); },
+        asio::detached);
   }
 }
 

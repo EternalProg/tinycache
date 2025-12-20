@@ -18,6 +18,8 @@ class Server {
   asio::ip::tcp::acceptor acceptor_;
 
   asio::awaitable<void> listener();
+
+  asio::signal_set signals_;
 };
 
 };  // namespace tinycache
