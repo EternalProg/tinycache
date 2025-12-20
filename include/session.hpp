@@ -10,6 +10,7 @@
 namespace asio = boost::asio;
 
 namespace tinycache {
+enum class ReadResult { kNewMessage, kCloseConnection, kReadError };
 
 class Session : std::enable_shared_from_this<Session> {
  public:
@@ -21,7 +22,7 @@ class Session : std::enable_shared_from_this<Session> {
   asio::streambuf buffer_;
   asio::strand<asio::ip::tcp::socket::executor_type> strand_;
 
-  asio::awaitable<void> read();
+  [[nodiscard]] asio::awaitable<ReadResult> read();
   asio::awaitable<void> write();
 };
 
