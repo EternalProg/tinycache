@@ -6,9 +6,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+set(SOURCES src/main.cpp src/server.cpp src/session.cpp src/respParser.cpp)
+
 add_compile_options(-g -Wall -Wextra -Wpedantic)
 
-add_executable(${PROJECT_NAME} src/main.cpp src/server.cpp src/session.cpp)
+add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_include_directories(${PROJECT_NAME} PRIVATE
   include/
@@ -27,9 +29,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE Boost::system spdlog::spdlog_heade
 include(FetchContent)
 FetchContent_Declare(
   googletest
-  https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip
+  GIT_REPOSITORY https://github.com/google/googletest.git
+  GIT_TAG v1.17.0
 )
 
 FetchContent_MakeAvailable(googletest)
-enable_testing()
 add_subdirectory(tests)
