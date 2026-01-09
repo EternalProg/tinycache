@@ -6,6 +6,9 @@
 #include <boost/asio/write.hpp>
 #include <session.hpp>
 #include <string>
+#include "command.hpp"
+#include "respParser.hpp"
+#include "respValue.hpp"
 #include "utils.hpp"
 
 namespace tinycache {
@@ -18,11 +21,33 @@ Session::Session(asio::ip::tcp::socket socket)
 
 asio::awaitable<void> Session::run() {
   for (;;) {
-    auto result = co_await read();
+    auto reading_result = co_await read();
 
-    if (result != ReadResult::kNewMessage) {
+    if (reading_result != ReadResult::kNewMessage) {
       break;
     }
+
+    RespValue value;
+    auto parsing_result = RespParser::parse(buffer_, value);
+
+    if (parsing_result == ParsingResult::kNeedMoreData) {
+      continue;
+    }
+
+    if (parsing_result == ParsingResult::kError) {
+      // For now I won't send anything. Maybe it's responsibility of CLI;
+      // co_await sendError("Protocol Error");
+      continue;
+    }
+
+    spdlog::debug("String read successfully: {}",
+                  std::get<std::string>(value.data));
+
+    // Command command = Command::toCommand(value);
+    /* TODO
+    auto response = dispatcher_.execute(cmd);
+    co_await write(response);
+    */
 
     co_await write();
   }
@@ -43,11 +68,11 @@ asio::awaitable<ReadResult> Session::read() {
     co_return ReadResult::kReadError;
   }
 
-  std::istream is(&buffer_);
-  std::string line;
-  std::getline(is, line);
+  // std::istream is(&buffer_);
+  // std::string line;
+  // std::getline(is, line);
 
-  spdlog::debug("Read message: {}", line);
+  spdlog::debug("Read message");
 
   co_return ReadResult::kNewMessage;
 }
