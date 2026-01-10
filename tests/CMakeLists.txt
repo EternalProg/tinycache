@@ -1,12 +1,21 @@
+enable_testing()
 set(Target TinyCacheTests)
 
+aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR} TEST_SOURCES)
+
 add_executable(${Target}
-  test.cpp
+  ${TEST_SOURCES}
+)
+
+target_include_directories(${Target} PRIVATE
+  ${PROJECT_SOURCE_DIR}/include
 )
 
 target_link_libraries(${Target}
   PRIVATE
     GTest::gtest_main
+    ${TINYCACHE_LIB}
+    tinycache_flags
 )
 
 include(GoogleTest)
