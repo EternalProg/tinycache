@@ -1,29 +1,44 @@
 cmake_minimum_required(VERSION 3.14)
 
-project(TinyCache)
+project(tinycache)
+
+set(TINYCACHE_LIB tinycache_lib)
+set(DEBUG_FLAGS -Wall -Wextra -Wpedantic -g)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(SOURCES src/main.cpp src/server.cpp src/session.cpp src/respParser.cpp)
+aux_source_directory(${PROJECT_SOURCE_DIR}/src SOURCES)
 
-add_compile_options(-g -Wall -Wextra -Wpedantic)
+add_library(tinycache_flags INTERFACE)
+target_compile_options(tinycache_flags INTERFACE -Wall -Wextra -Wpedantic)
 
-add_executable(${PROJECT_NAME} ${SOURCES})
+add_library(${TINYCACHE_LIB}
+  ${SOURCES}
+)
 
-target_include_directories(${PROJECT_NAME} PRIVATE
-  include/
+target_include_directories(${TINYCACHE_LIB} PUBLIC
+  ${PROJECT_SOURCE_DIR}/include
 )
 
 # Boost configuration
 find_package(Boost CONFIG REQUIRED COMPONENTS system)
-target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
+target_include_directories(${TINYCACHE_LIB} PRIVATE ${Boost_INCLUDE_DIRS})
 
 # SPDLOG configuration
 find_package(spdlog REQUIRED)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Boost::system spdlog::spdlog_header_only)
+target_link_libraries(${TINYCACHE_LIB} PRIVATE
+  Boost::system
+  spdlog::spdlog_header_only
+  tinycache_flags
+)
+
+set(MAIN_FILE src/main.cpp)
+
+add_executable(${PROJECT_NAME} ${MAIN_FILE})
+target_link_libraries(${PROJECT_NAME} PRIVATE ${TINYCACHE_LIB} tinycache_flags)
 
 # GTest configuration
 include(FetchContent)
@@ -35,3 +50,5 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(googletest)
 add_subdirectory(tests)
+
+
