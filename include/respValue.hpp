@@ -10,12 +10,12 @@ namespace tinycache {
 
 struct RespValue {
   enum class Type {
+    kUnknown,
     kSimpleString,
     kError,
     kInteger,
     kBulkString,
     kArray,
-    kUnknown
   };
 
   Type type;

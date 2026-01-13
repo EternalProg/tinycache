@@ -2,11 +2,12 @@
 #define TINYCACHE_RESP_PARSER_HPP
 
 #include <boost/asio/streambuf.hpp>
+#include <cstdint>
 #include <iterator>
 #include "respValue.hpp"
 
 namespace tinycache {
-enum class ParsingResult { kReady, kNeedMoreData, kError };
+enum class ParsingResult : std::uint8_t { kReady, kNeedMoreData, kError };
 
 class RespParser {
  public:
