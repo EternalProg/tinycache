@@ -76,6 +76,10 @@ ParsingResult RespParser::parse(asio::streambuf& buffer, RespValue& outValue) {
       break;
     }
 
+    case RespValue::Type::kInteger: {
+      result = parseInteger(it, end, consumed, outValue);
+      break;
+    }
     default:
       break;
   }
@@ -107,8 +111,49 @@ ParsingResult RespParser::parseSimpleString(Iterator it, Iterator end,
   return ParsingResult::kReady;
 }
 
+/*
+  :[<+|->]<value>\r\n
+
+  The colon (:) as the first byte.
+  An optional plus (+) or minus (-) as the sign.
+  One or more decimal digits (0..9) as the integer's unsigned, base-10 value.
+  The CRLF terminator.
+  For example, :0\r\n and :1000\r\n are integer replies (of zero and one thousand, respectively).
+   */
+template <std::forward_iterator Iterator>
+ParsingResult RespParser::parseInteger(Iterator it, Iterator end,
+                                       std::uint64_t& consumed,
+                                       RespValue& outValue) {
+  // :[<+|->]<value>\r\n
+  Iterator crlf_pos = findCrlf(it, end);
+  if (crlf_pos == end) {
+    return ParsingResult::kNeedMoreData;
+  }
+
+  std::string data(it, crlf_pos);
+
+  try {
+    std::size_t pos = 0;
+    std::int64_t value = std::stoll(std::string(data), &pos, 10);
+
+    if (pos != data.size()) {
+      return ParsingResult::kError;
+    }
+
+    outValue.type = RespValue::Type::kInteger;
+    outValue.data = value;
+
+  } catch (...) {
+    return ParsingResult::kError;
+  }
+
+  consumed += std::distance(it, crlf_pos) + 2;
+
+  return ParsingResult::kReady;
+}
 
 template <std::random_access_iterator Iterator>
+template <std::forward_iterator Iterator>
 ParsingResult RespParser::parseError(Iterator it, Iterator end,
                                      std::uint64_t& consumed,
                                      RespValue& outValue) {

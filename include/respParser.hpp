@@ -27,6 +27,11 @@ class RespParser {
                                          RespValue& outValue);
 
   template <std::random_access_iterator Iterator>
+  template <std::forward_iterator Iterator>
+  static ParsingResult parseInteger(Iterator it, Iterator end,
+                                    std::uint64_t& consumed,
+                                    RespValue& outValue);
+  template <std::forward_iterator Iterator>
   static ParsingResult parseError(Iterator it, Iterator end,
                                   std::uint64_t& consumed, RespValue& outValue);
 };
