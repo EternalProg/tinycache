@@ -50,3 +50,13 @@ TEST_F(RespParserTest, ParsesSimpleString) {
   EXPECT_EQ(buffer_.size(), 0);
 }
 
+TEST_F(RespParserTest, ParsesErrorString) {
+  write(buffer_, "-ERR unknown command\r\n");
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  EXPECT_EQ(result, ParsingResult::kReady);
+  EXPECT_EQ(value_.type, RespValue::Type::kError);
+  EXPECT_EQ(std::get<std::string>(value_.data), "ERR unknown command");
+  EXPECT_EQ(buffer_.size(), 0);
+}
