@@ -27,19 +27,16 @@ RespValue::Type determineType(char type) {
   }
 }
 
-// return iterator to
 template <typename Iterator>
 Iterator findCrlf(Iterator it, Iterator end) {
-  while (it != end) {
-    if (*it == '\n') {
-      // return it that points to '\r'
-      // so later I can read until it later and get the data
-      return it - 2;
+  for (auto cur = it; cur != end; ++cur) {
+    if (*cur == '\n') {
+      if (cur != it && *(cur - 1) == '\r') {
+        return cur - 1;  // points to '\r'
+      }
     }
-    ++it;
   }
-
-  return it;
+  return end;
 }
 
 }  // namespace
@@ -60,9 +57,12 @@ ParsingResult RespParser::parse(asio::streambuf& buffer, RespValue& outValue) {
   auto it = begin;
 
   auto type = determineType(*it);
+  if (type == RespValue::Type::kUnknown) {
+    return ParsingResult::kError;
+  }
   ++it;
 
-  // Because It consumes the first char to determine type
+  // Because the first char is consumed to determine type
   std::uint64_t consumed = 1;
 
   ParsingResult result = ParsingResult::kError;
@@ -75,7 +75,9 @@ ParsingResult RespParser::parse(asio::streambuf& buffer, RespValue& outValue) {
       break;
   }
 
-  buffer.consume(consumed);
+  if (result != ParsingResult::kNeedMoreData) {
+    buffer.consume(consumed);
+  }
 
   return result;
 }
@@ -86,16 +88,16 @@ ParsingResult RespParser::parseSimpleString(Iterator it, Iterator end,
                                             RespValue& outValue) {
   // CRLF (i.e., \r\n)
   auto crlf_pos = findCrlf(it, end);
-  if (crlf_pos == it) {
+  if (crlf_pos == end) {
     return ParsingResult::kNeedMoreData;
   }
 
-  std::string data(it, crlf_pos - 2);
+  std::string data(it, crlf_pos);
 
   outValue.type = RespValue::Type::kSimpleString;
-  outValue.data = data;
+  outValue.data = std::move(data);
 
-  consumed += std::distance(it, crlf_pos) + 4;
+  consumed += std::distance(it, crlf_pos) + 2;
 
   return ParsingResult::kReady;
 }
