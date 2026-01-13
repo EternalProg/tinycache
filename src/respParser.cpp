@@ -71,6 +71,11 @@ ParsingResult RespParser::parse(asio::streambuf& buffer, RespValue& outValue) {
       result = parseSimpleString(it, end, consumed, outValue);
       break;
     }
+    case RespValue::Type::kError: {
+      result = parseError(it, end, consumed, outValue);
+      break;
+    }
+
     default:
       break;
   }
@@ -102,5 +107,24 @@ ParsingResult RespParser::parseSimpleString(Iterator it, Iterator end,
   return ParsingResult::kReady;
 }
 
+
+template <std::random_access_iterator Iterator>
+ParsingResult RespParser::parseError(Iterator it, Iterator end,
+                                     std::uint64_t& consumed,
+                                     RespValue& outValue) {
+  auto crlf_pos = findCrlf(it, end);
+  if (crlf_pos == end) {
+    return ParsingResult::kNeedMoreData;
+  }
+
+  std::string data(it, crlf_pos);
+
+  outValue.type = RespValue::Type::kError;
+  outValue.data = std::move(data);
+
+  consumed += std::distance(it, crlf_pos) + 2;
+
+  return ParsingResult::kReady;
+}
 
 }  // namespace tinycache

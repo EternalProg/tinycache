@@ -26,6 +26,9 @@ class RespParser {
                                          std::uint64_t& consumed,
                                          RespValue& outValue);
 
+  template <std::random_access_iterator Iterator>
+  static ParsingResult parseError(Iterator it, Iterator end,
+                                  std::uint64_t& consumed, RespValue& outValue);
 };
 
 }  // namespace tinycache
