@@ -60,3 +60,34 @@ TEST_F(RespParserTest, ParsesErrorString) {
   EXPECT_EQ(std::get<std::string>(value_.data), "ERR unknown command");
   EXPECT_EQ(buffer_.size(), 0);
 }
+
+TEST_F(RespParserTest, ParsesInteger) {
+  write(buffer_, ":12345\r\n");
+  auto result = RespParser::parse(buffer_, value_);
+
+  EXPECT_EQ(result, ParsingResult::kReady);
+  EXPECT_EQ(value_.type, RespValue::Type::kInteger);
+  EXPECT_EQ(std::get<std::int64_t>(value_.data), 12345);
+  EXPECT_EQ(buffer_.size(), 0);
+}
+
+TEST_F(RespParserTest, ParsesIntegerWithPlus) {
+  write(buffer_, ":+12345\r\n");
+  auto result = RespParser::parse(buffer_, value_);
+
+  EXPECT_EQ(result, ParsingResult::kReady);
+  EXPECT_EQ(value_.type, RespValue::Type::kInteger);
+  EXPECT_EQ(std::get<std::int64_t>(value_.data), 12345);
+  EXPECT_EQ(buffer_.size(), 0);
+}
+
+TEST_F(RespParserTest, ParsesNegativeInteger) {
+  write(buffer_, ":-12345\r\n");
+  auto result = RespParser::parse(buffer_, value_);
+
+  EXPECT_EQ(result, ParsingResult::kReady);
+  EXPECT_EQ(value_.type, RespValue::Type::kInteger);
+  EXPECT_EQ(std::get<std::int64_t>(value_.data), -12345);
+  EXPECT_EQ(buffer_.size(), 0);
+}
+
