@@ -91,3 +91,87 @@ TEST_F(RespParserTest, ParsesNegativeInteger) {
   EXPECT_EQ(buffer_.size(), 0);
 }
 
+TEST_F(RespParserTest, ParsesBulkString) {
+  write(buffer_, "$16\r\ntest_bulk_string\r\n");
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  EXPECT_EQ(result, ParsingResult::kReady);
+  EXPECT_EQ(value_.type, RespValue::Type::kBulkString);
+  EXPECT_EQ(std::get<std::string>(value_.data), "test_bulk_string");
+  EXPECT_EQ(buffer_.size(), 0);
+}
+
+TEST_F(RespParserTest, IncompleteBulkStringDoesNotConsume) {
+  write(buffer_, "$6\r\nfoo");
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  EXPECT_EQ(result, ParsingResult::kNeedMoreData);
+  EXPECT_GT(buffer_.size(), 0);
+}
+
+TEST_F(RespParserTest, ParsesEmptyBulkString) {
+  write(buffer_, "$0\r\n\r\n");
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  EXPECT_EQ(result, ParsingResult::kReady);
+  EXPECT_EQ(value_.type, RespValue::Type::kBulkString);
+  EXPECT_EQ(std::get<std::string>(value_.data), "");
+  EXPECT_EQ(buffer_.size(), 0);
+}
+
+TEST_F(RespParserTest, ParsesNullBulkString) {
+  write(buffer_, "$-1\r\n");
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  EXPECT_EQ(result, ParsingResult::kReady);
+  EXPECT_EQ(value_.type, RespValue::Type::kNullBulkString);
+  EXPECT_EQ(buffer_.size(), 0);
+}
+
+TEST_F(RespParserTest, BulkStringTooLargeIsError) {
+  write(buffer_, "$536870913\r\n");  // 512MB + 1
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  EXPECT_EQ(result, ParsingResult::kError);
+}
+
+TEST_F(RespParserTest, BulkStringWithInternalCRLF) {
+  write(buffer_, "$5\r\nhe\r\nl\r\n");
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  EXPECT_EQ(result, ParsingResult::kReady);
+  EXPECT_EQ(value_.type, RespValue::Type::kBulkString);
+  EXPECT_EQ(std::get<std::string>(value_.data), std::string("he\r\nl", 5));
+}
+
+TEST_F(RespParserTest, IncompleteBulkHeaderNeedsMoreData) {
+  write(buffer_, "$1");
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  EXPECT_EQ(result, ParsingResult::kNeedMoreData);
+  EXPECT_GT(buffer_.size(), 0);
+}
+
+TEST_F(RespParserTest, InvalidBulkLengthIsError) {
+  write(buffer_, "$abc\r\n");
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  EXPECT_EQ(result, ParsingResult::kError);
+}
+
+TEST_F(RespParserTest, NegativeBulkLengthOtherThanMinusOneIsError) {
+  write(buffer_, "$-5\r\n");
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  EXPECT_EQ(result, ParsingResult::kError);
+}
+
