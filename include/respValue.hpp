@@ -7,7 +7,8 @@
 #include <vector>
 
 namespace tinycache {
-
+// https://redis.io/docs/latest/develop/reference/protocol-spec/
+// RESP2 types
 struct RespValue {
   enum class Type {
     kUnknown,
@@ -15,6 +16,7 @@ struct RespValue {
     kError,
     kInteger,
     kBulkString,
+    kNullBulkString,
     kArray,
   };
 
