@@ -5,7 +5,8 @@
 #include <string>
 #include "respValue.hpp"
 
-static constexpr std::size_t kMaxBulkSize = 1024 * 1024 * 512;
+// 16Mb; Default RESP use 512Mb
+static constexpr std::size_t kMaxBulkSize = 1024 * 1024 * 16 /*512*/;
 
 namespace tinycache {
 
@@ -15,7 +16,9 @@ namespace {
 
 class RespParserImpl {
  public:
-  static ParsingResult parseImpl(asio::streambuf& buffer, RespValue& outValue);
+  template <std::random_access_iterator Iterator>
+  static ParsingResult parseImpl(Iterator begin, Iterator end,
+                                 std::uint64_t& consumed, RespValue& outValue);
 
  private:
   template <std::random_access_iterator Iterator>
@@ -44,20 +47,52 @@ class RespParserImpl {
                                     RespValue& outValue);
 
   template <std::random_access_iterator Iterator>
+  static ParsingResult parseArray(Iterator it, Iterator end,
+                                  std::uint64_t& consumed, RespValue& outValue);
+
+  template <std::random_access_iterator Iterator>
   static ParsingResult parseError(Iterator it, Iterator end,
                                   std::uint64_t& consumed, RespValue& outValue);
 };
 
-ParsingResult RespParserImpl::parseImpl(asio::streambuf& buffer,
+// ParsingResult RespParserImpl::parseImpl(asio::streambuf& buffer,
+//                                         RespValue& outValue) {
+//   if (buffer.size() == 0) {
+//     return ParsingResult::kNeedMoreData;
+//   }
+
+//   auto data = buffer.data();
+//   auto begin = boost::asio::buffers_begin(data);
+//   auto end = boost::asio::buffers_end(data);
+
+//   if (begin == end) {
+//     return ParsingResult::kNeedMoreData;
+//   }
+
+//   auto it = begin;
+
+//   auto type = determineType(*it);
+//   if (type == RespValue::Type::kUnknown) {
+//     return ParsingResult::kError;
+//   }
+//   ++it;
+
+//   // Because the first char is consumed to determine type
+//   std::uint64_t consumed = 1;
+
+//   ParsingResult result = dispatchParsing(type, it, end, consumed, outValue);
+
+//   if (result != ParsingResult::kNeedMoreData) {
+//     buffer.consume(consumed);
+//   }
+
+//   return result;
+// }
+
+template <std::random_access_iterator Iterator>
+ParsingResult RespParserImpl::parseImpl(Iterator begin, Iterator end,
+                                        std::uint64_t& consumed,
                                         RespValue& outValue) {
-  if (buffer.size() == 0) {
-    return ParsingResult::kNeedMoreData;
-  }
-
-  auto data = buffer.data();
-  auto begin = boost::asio::buffers_begin(data);
-  auto end = boost::asio::buffers_end(data);
-
   if (begin == end) {
     return ParsingResult::kNeedMoreData;
   }
@@ -71,12 +106,12 @@ ParsingResult RespParserImpl::parseImpl(asio::streambuf& buffer,
   ++it;
 
   // Because the first char is consumed to determine type
-  std::uint64_t consumed = 1;
+  std::uint64_t tmp_consumed = 1;
 
   ParsingResult result = dispatchParsing(type, it, end, consumed, outValue);
 
   if (result != ParsingResult::kNeedMoreData) {
-    buffer.consume(consumed);
+    consumed += tmp_consumed;
   }
 
   return result;
@@ -99,6 +134,9 @@ ParsingResult RespParserImpl::dispatchParsing(RespValue::Type type, Iterator it,
     }
     case RespValue::Type::kBulkString: {
       return parseBulkString(it, end, consumed, outValue);
+    }
+    case RespValue::Type::kArray: {
+      return parseArray(it, end, consumed, outValue);
     }
     default:
       break;
@@ -261,6 +299,60 @@ ParsingResult RespParserImpl::parseInteger(Iterator it, Iterator end,
   return ParsingResult::kReady;
 }
 
+/*
+    *<number-of-elements>\r\n<element-1>...<element-n>
+
+    An asterisk (*) as the first byte.
+    One or more decimal digits (0..9) as the number of elements in the array as an unsigned, base-10 value.
+    The CRLF terminator.
+    An additional RESP type for every element of the array.
+*/
+template <std::random_access_iterator Iterator>
+ParsingResult RespParserImpl::parseArray(Iterator it, Iterator end,
+                                         std::uint64_t& consumed,
+                                         RespValue& outValue) {
+  auto header_crlf = findCrlf(it, end);
+  if (header_crlf == end) {
+    return ParsingResult::kNeedMoreData;
+  }
+
+  std::string header(it, header_crlf);
+  std::size_t number_of_elements = 0;
+
+  try {
+    std::size_t pos = 0;
+    number_of_elements = std::stoll(header, &pos, 10);
+
+    if (pos != header.size()) {
+      return ParsingResult::kError;
+    }
+  } catch (...) {
+    return ParsingResult::kError;
+  }
+
+  outValue.type = RespValue::Type::kArray;
+  std::vector<RespValue> elements;
+  elements.reserve(number_of_elements);
+
+  std::size_t tmp_consumed = std::distance(it, header_crlf) + 2;
+  for (std::size_t i = 0; i < number_of_elements; ++i) {
+    // Not sure if it's good to fill the elements, because there can be error at the end.
+    // And also we go through all the elements every time
+    RespValue tmp;
+    auto result = parseImpl(it + tmp_consumed, end, tmp_consumed, tmp);
+    if (result == ParsingResult::kReady) {
+      elements.push_back(std::move(tmp));
+    } else {
+      return result;
+    }
+  }
+
+  outValue.data = std::move(elements);
+  consumed += tmp_consumed;
+
+  return ParsingResult::kReady;
+}
+
 template <std::random_access_iterator Iterator>
 ParsingResult RespParserImpl::parseError(Iterator it, Iterator end,
                                          std::uint64_t& consumed,
@@ -283,11 +375,19 @@ ParsingResult RespParserImpl::parseError(Iterator it, Iterator end,
 }  // namespace
 
 ParsingResult RespParser::parse(asio::streambuf& buffer, RespValue& outValue) {
+  auto data = buffer.data();
+  auto begin = boost::asio::buffers_begin(data);
+  auto end = boost::asio::buffers_end(data);
+
   RespValue tmp;
-  auto result = RespParserImpl::parseImpl(buffer, tmp);
+  std::size_t consumed = 0;
+
+  auto result = RespParserImpl::parseImpl(begin, end, consumed, tmp);
   if (result == ParsingResult::kReady) {
     outValue = std::move(tmp);
+    buffer.consume(consumed);
   }
+
   return result;
 }
 
