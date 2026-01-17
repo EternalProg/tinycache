@@ -13,38 +13,43 @@ namespace asio = boost::asio;
 
 namespace {
 
-RespValue::Type determineType(char type) {
-  switch (type) {
-    case '+':
-      return RespValue::Type::kSimpleString;
-    case '-':
-      return RespValue::Type::kError;
-    case ':':
-      return RespValue::Type::kInteger;
-    case '$':
-      return RespValue::Type::kBulkString;
-    case '*':
-      return RespValue::Type::kArray;
-    default:
-      return RespValue::Type::kUnknown;
-  }
-}
+class RespParserImpl {
+ public:
+  static ParsingResult parseImpl(asio::streambuf& buffer, RespValue& outValue);
 
-template <typename Iterator>
-Iterator findCrlf(Iterator it, Iterator end) {
-  for (auto cur = it; cur != end; ++cur) {
-    if (*cur == '\n') {
-      if (cur != it && *(cur - 1) == '\r') {
-        return cur - 1;  // points to '\r'
-      }
-    }
-  }
-  return end;
-}
+ private:
+  template <std::random_access_iterator Iterator>
+  static ParsingResult dispatchParsing(RespValue::Type type, Iterator it,
+                                       Iterator end, std::uint64_t& consumed,
+                                       RespValue& outValue);
 
-}  // namespace
+  static RespValue::Type determineType(char type);
 
-ParsingResult RespParser::parse(asio::streambuf& buffer, RespValue& outValue) {
+  template <typename Iterator>
+  static Iterator findCrlf(Iterator it, Iterator end);
+
+  template <std::random_access_iterator Iterator>
+  static ParsingResult parseSimpleString(Iterator it, Iterator end,
+                                         std::uint64_t& consumed,
+                                         RespValue& outValue);
+
+  template <std::random_access_iterator Iterator>
+  static ParsingResult parseBulkString(Iterator it, Iterator end,
+                                       std::uint64_t& consumed,
+                                       RespValue& outValue);
+
+  template <std::random_access_iterator Iterator>
+  static ParsingResult parseInteger(Iterator it, Iterator end,
+                                    std::uint64_t& consumed,
+                                    RespValue& outValue);
+
+  template <std::random_access_iterator Iterator>
+  static ParsingResult parseError(Iterator it, Iterator end,
+                                  std::uint64_t& consumed, RespValue& outValue);
+};
+
+ParsingResult RespParserImpl::parseImpl(asio::streambuf& buffer,
+                                        RespValue& outValue) {
   if (buffer.size() == 0) {
     return ParsingResult::kNeedMoreData;
   }
@@ -68,28 +73,7 @@ ParsingResult RespParser::parse(asio::streambuf& buffer, RespValue& outValue) {
   // Because the first char is consumed to determine type
   std::uint64_t consumed = 1;
 
-  ParsingResult result = ParsingResult::kError;
-  switch (type) {
-    case RespValue::Type::kSimpleString: {
-      result = parseSimpleString(it, end, consumed, outValue);
-      break;
-    }
-    case RespValue::Type::kError: {
-      result = parseError(it, end, consumed, outValue);
-      break;
-    }
-
-    case RespValue::Type::kInteger: {
-      result = parseInteger(it, end, consumed, outValue);
-      break;
-    }
-    case RespValue::Type::kBulkString: {
-      result = parseBulkString(it, end, consumed, outValue);
-      break;
-    }
-    default:
-      break;
-  }
+  ParsingResult result = dispatchParsing(type, it, end, consumed, outValue);
 
   if (result != ParsingResult::kNeedMoreData) {
     buffer.consume(consumed);
@@ -99,9 +83,63 @@ ParsingResult RespParser::parse(asio::streambuf& buffer, RespValue& outValue) {
 }
 
 template <std::random_access_iterator Iterator>
-ParsingResult RespParser::parseSimpleString(Iterator it, Iterator end,
-                                            std::uint64_t& consumed,
-                                            RespValue& outValue) {
+ParsingResult RespParserImpl::dispatchParsing(RespValue::Type type, Iterator it,
+                                              Iterator end,
+                                              std::uint64_t& consumed,
+                                              RespValue& outValue) {
+  switch (type) {
+    case RespValue::Type::kSimpleString: {
+      return parseSimpleString(it, end, consumed, outValue);
+    }
+    case RespValue::Type::kError: {
+      return parseError(it, end, consumed, outValue);
+    }
+    case RespValue::Type::kInteger: {
+      return parseInteger(it, end, consumed, outValue);
+    }
+    case RespValue::Type::kBulkString: {
+      return parseBulkString(it, end, consumed, outValue);
+    }
+    default:
+      break;
+  }
+
+  return ParsingResult::kError;
+}
+
+RespValue::Type RespParserImpl::determineType(char type) {
+  switch (type) {
+    case '+':
+      return RespValue::Type::kSimpleString;
+    case '-':
+      return RespValue::Type::kError;
+    case ':':
+      return RespValue::Type::kInteger;
+    case '$':
+      return RespValue::Type::kBulkString;
+    case '*':
+      return RespValue::Type::kArray;
+    default:
+      return RespValue::Type::kUnknown;
+  }
+}
+
+template <typename Iterator>
+Iterator RespParserImpl::findCrlf(Iterator it, Iterator end) {
+  for (auto cur = it; cur != end; ++cur) {
+    if (*cur == '\n') {
+      if (cur != it && *(cur - 1) == '\r') {
+        return cur - 1;  // points to '\r'
+      }
+    }
+  }
+  return end;
+}
+
+template <std::random_access_iterator Iterator>
+ParsingResult RespParserImpl::parseSimpleString(Iterator it, Iterator end,
+                                                std::uint64_t& consumed,
+                                                RespValue& outValue) {
   // CRLF (i.e., \r\n)
   auto crlf_pos = findCrlf(it, end);
   if (crlf_pos == end) {
@@ -128,9 +166,9 @@ ParsingResult RespParser::parseSimpleString(Iterator it, Iterator end,
     A final CRLF.
 */
 template <std::random_access_iterator Iterator>
-ParsingResult RespParser::parseBulkString(Iterator it, Iterator end,
-                                          std::uint64_t& consumed,
-                                          RespValue& outValue) {
+ParsingResult RespParserImpl::parseBulkString(Iterator it, Iterator end,
+                                              std::uint64_t& consumed,
+                                              RespValue& outValue) {
   auto header_crlf = findCrlf(it, end);
   if (header_crlf == end) {
     return ParsingResult::kNeedMoreData;
@@ -192,9 +230,9 @@ ParsingResult RespParser::parseBulkString(Iterator it, Iterator end,
   For example, :0\r\n and :1000\r\n are integer replies (of zero and one thousand, respectively).
    */
 template <std::random_access_iterator Iterator>
-ParsingResult RespParser::parseInteger(Iterator it, Iterator end,
-                                       std::uint64_t& consumed,
-                                       RespValue& outValue) {
+ParsingResult RespParserImpl::parseInteger(Iterator it, Iterator end,
+                                           std::uint64_t& consumed,
+                                           RespValue& outValue) {
   // :[<+|->]<value>\r\n
   Iterator crlf_pos = findCrlf(it, end);
   if (crlf_pos == end) {
@@ -224,10 +262,9 @@ ParsingResult RespParser::parseInteger(Iterator it, Iterator end,
 }
 
 template <std::random_access_iterator Iterator>
-template <std::forward_iterator Iterator>
-ParsingResult RespParser::parseError(Iterator it, Iterator end,
-                                     std::uint64_t& consumed,
-                                     RespValue& outValue) {
+ParsingResult RespParserImpl::parseError(Iterator it, Iterator end,
+                                         std::uint64_t& consumed,
+                                         RespValue& outValue) {
   auto crlf_pos = findCrlf(it, end);
   if (crlf_pos == end) {
     return ParsingResult::kNeedMoreData;
@@ -241,6 +278,17 @@ ParsingResult RespParser::parseError(Iterator it, Iterator end,
   consumed += std::distance(it, crlf_pos) + 2;
 
   return ParsingResult::kReady;
+}
+
+}  // namespace
+
+ParsingResult RespParser::parse(asio::streambuf& buffer, RespValue& outValue) {
+  RespValue tmp;
+  auto result = RespParserImpl::parseImpl(buffer, tmp);
+  if (result == ParsingResult::kReady) {
+    outValue = std::move(tmp);
+  }
+  return result;
 }
 
 }  // namespace tinycache
