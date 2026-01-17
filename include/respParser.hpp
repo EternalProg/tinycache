@@ -3,42 +3,47 @@
 
 #include <boost/asio/streambuf.hpp>
 #include <cstdint>
-#include <iterator>
 #include "respValue.hpp"
 
 namespace tinycache {
 enum class ParsingResult : std::uint8_t { kReady, kNeedMoreData, kError };
 
-class RespParser {
- public:
-  /*
-    try to parse buffer and fill the value
-    return kReady if parsing is done
-    return kNeedMoreData if not enough data
-    return kError otherwise
-  */
+/**
+ * @brief RESP protocol streaming parser.
+ *
+ * Parses a single RESP value from the provided stream buffer.
+ * The parser operates incrementally and may require multiple
+ * invocations until the value is fully parsed.
+ */
+struct RespParser {
+  /**
+   * @brief Attempts to parse a RESP value from the input buffer.
+   *
+   * This function examines the contents of the buffer and tries to parse
+   * exactly one RESP value. The buffer is only consumed if the parsing
+   * either succeeds or fails with an unrecoverable error.
+   *
+   * @param buffer Input buffer containing RESP-encoded data.
+   *               The buffer may contain partial data.
+   *
+   * @param outValue Output parameter that receives the parsed value.
+   *                 This parameter is modified only if the function
+   *                 returns ParsingResult::kReady.
+   *
+   * @return ParsingResult::kReady if a complete RESP value was parsed.
+   * @return ParsingResult::kNeedMoreData if the buffer does not contain
+   *         enough data to complete parsing. The buffer is left unchanged.
+   * @return ParsingResult::kError if the input data is malformed.
+   *         The buffer is consumed up to the point of error.
+   *
+   * @note The function guarantees strong exception safety:
+   *       outValue is not modified unless parsing completes successfully.
+   *
+   * @warning On ParsingResult::kError the buffer content is considered
+   *          invalid and should typically be discarded.
+   */
   static ParsingResult parse(boost::asio::streambuf& buffer,
                              RespValue& outValue);
-
- private:
-  template <std::random_access_iterator Iterator>
-  static ParsingResult parseSimpleString(Iterator it, Iterator end,
-                                         std::uint64_t& consumed,
-                                         RespValue& outValue);
-
-  template <std::random_access_iterator Iterator>
-  static ParsingResult parseBulkString(Iterator it, Iterator end,
-                                       std::uint64_t& consumed,
-                                       RespValue& outValue);
-
-  template <std::random_access_iterator Iterator>
-  static ParsingResult parseInteger(Iterator it, Iterator end,
-                                    std::uint64_t& consumed,
-                                    RespValue& outValue);
-  template <std::forward_iterator Iterator>
-  template <std::random_access_iterator Iterator>
-  static ParsingResult parseError(Iterator it, Iterator end,
-                                  std::uint64_t& consumed, RespValue& outValue);
 };
 
 }  // namespace tinycache
