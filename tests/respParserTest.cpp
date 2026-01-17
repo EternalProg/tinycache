@@ -2,6 +2,8 @@
 #include <boost/asio.hpp>
 #include <ostream>
 #include <respParser.hpp>
+#include <variant>
+#include "respValue.hpp"
 
 using tinycache::ParsingResult;
 using tinycache::RespParser;
@@ -175,3 +177,163 @@ TEST_F(RespParserTest, NegativeBulkLengthOtherThanMinusOneIsError) {
   EXPECT_EQ(result, ParsingResult::kError);
 }
 
+TEST_F(RespParserTest, ParsesArrayOfBulkStrings) {
+  write(buffer_,
+        "*2\r\n"
+        "$3\r\nfoo\r\n"
+        "$3\r\nbar\r\n");
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  ASSERT_EQ(result, ParsingResult::kReady);
+  ASSERT_EQ(value_.type, RespValue::Type::kArray);
+  ASSERT_TRUE(std::holds_alternative<std::vector<RespValue>>(value_.data));
+
+  auto elements = std::get<std::vector<RespValue>>(value_.data);
+
+  ASSERT_EQ(elements.size(), 2);
+
+  EXPECT_EQ(elements[0].type, RespValue::Type::kBulkString);
+  EXPECT_EQ(std::get<std::string>(elements[0].data), "foo");
+  EXPECT_EQ(elements[1].type, RespValue::Type::kBulkString);
+  EXPECT_EQ(std::get<std::string>(elements[1].data), "bar");
+}
+
+TEST_F(RespParserTest, ParsesNestedArrays) {
+  write(buffer_,
+        "*2\r\n"
+        "*1\r\n"
+        ":1\r\n"
+        "+OK\r\n");
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  ASSERT_EQ(result, ParsingResult::kReady);
+  ASSERT_EQ(value_.type, RespValue::Type::kArray);
+  ASSERT_TRUE(std::holds_alternative<std::vector<RespValue>>(value_.data));
+
+  auto elements = std::get<std::vector<RespValue>>(value_.data);
+
+  ASSERT_EQ(elements.size(), 2);
+
+  EXPECT_EQ(elements[0].type, RespValue::Type::kArray);
+
+  auto nested_integer = std::get<std::vector<RespValue>>(elements[0].data)[0];
+  EXPECT_EQ(nested_integer.type, RespValue::Type::kInteger);
+  EXPECT_EQ(std::get<std::int64_t>(nested_integer.data), 1);
+
+  EXPECT_EQ(elements[1].type, RespValue::Type::kSimpleString);
+  EXPECT_EQ(std::get<std::string>(elements[1].data), "OK");
+}
+
+TEST_F(RespParserTest, ParsesEmptyArray) {
+  write(buffer_, "*0\r\n");
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  ASSERT_EQ(result, ParsingResult::kReady);
+  ASSERT_EQ(value_.type, RespValue::Type::kArray);
+
+  auto elements = std::get<std::vector<RespValue>>(value_.data);
+  EXPECT_TRUE(elements.empty());
+}
+
+TEST_F(RespParserTest, ParsesArrayWithMixedTypes) {
+  write(buffer_,
+        "*4\r\n"
+        "+OK\r\n"
+        ":42\r\n"
+        "$3\r\nfoo\r\n"
+        "$-1\r\n");
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  ASSERT_EQ(result, ParsingResult::kReady);
+
+  auto elements = std::get<std::vector<RespValue>>(value_.data);
+  ASSERT_EQ(elements.size(), 4);
+
+  EXPECT_EQ(elements[0].type, RespValue::Type::kSimpleString);
+  EXPECT_EQ(std::get<std::string>(elements[0].data), "OK");
+
+  EXPECT_EQ(elements[1].type, RespValue::Type::kInteger);
+  EXPECT_EQ(std::get<std::int64_t>(elements[1].data), 42);
+
+  EXPECT_EQ(elements[2].type, RespValue::Type::kBulkString);
+  EXPECT_EQ(std::get<std::string>(elements[2].data), "foo");
+
+  EXPECT_EQ(elements[3].type, RespValue::Type::kNullBulkString);
+}
+
+TEST_F(RespParserTest, ParsesArrayWithNestedEmptyArray) {
+  write(buffer_,
+        "*2\r\n"
+        "*0\r\n"
+        ":1\r\n");
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  ASSERT_EQ(result, ParsingResult::kReady);
+
+  auto elements = std::get<std::vector<RespValue>>(value_.data);
+  ASSERT_EQ(elements.size(), 2);
+
+  EXPECT_EQ(elements[0].type, RespValue::Type::kArray);
+  EXPECT_TRUE(std::get<std::vector<RespValue>>(elements[0].data).empty());
+
+  EXPECT_EQ(elements[1].type, RespValue::Type::kInteger);
+  EXPECT_EQ(std::get<std::int64_t>(elements[1].data), 1);
+}
+
+TEST_F(RespParserTest, ParsesDeeplyNestedArrays) {
+  write(buffer_,
+        "*1\r\n"
+        "*1\r\n"
+        "*1\r\n"
+        ":7\r\n");
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  ASSERT_EQ(result, ParsingResult::kReady);
+
+  auto lvl1 = std::get<std::vector<RespValue>>(value_.data);
+  auto lvl2 = std::get<std::vector<RespValue>>(lvl1[0].data);
+  auto lvl3 = std::get<std::vector<RespValue>>(lvl2[0].data);
+
+  EXPECT_EQ(lvl3[0].type, RespValue::Type::kInteger);
+  EXPECT_EQ(std::get<std::int64_t>(lvl3[0].data), 7);
+}
+
+TEST_F(RespParserTest, IncompleteArrayReturnsNeedMoreData) {
+  write(buffer_,
+        "*2\r\n"
+        ":1\r\n");
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  EXPECT_EQ(result, ParsingResult::kNeedMoreData);
+}
+
+TEST_F(RespParserTest, ExtraDataAfterArrayIsNotAnError) {
+  write(buffer_,
+        "*2\r\n"
+        ":1\r\n"
+        ":2\r\n"
+        ":3\r\n");
+
+  RespValue first;
+  auto result1 = RespParser::parse(buffer_, first);
+
+  ASSERT_EQ(result1, ParsingResult::kReady);
+  ASSERT_EQ(first.type, RespValue::Type::kArray);
+
+  auto elements = std::get<std::vector<RespValue>>(first.data);
+  ASSERT_EQ(elements.size(), 2);
+
+  RespValue second;
+  auto result2 = RespParser::parse(buffer_, second);
+
+  ASSERT_EQ(result2, ParsingResult::kReady);
+  ASSERT_EQ(second.type, RespValue::Type::kInteger);
+  EXPECT_EQ(std::get<std::int64_t>(second.data), 3);
+}
