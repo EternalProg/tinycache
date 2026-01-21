@@ -35,16 +35,19 @@ asio::awaitable<void> Session::run() {
     }
 
     if (parsing_result == ParsingResult::kError) {
-      // For now I won't send anything. Maybe it's responsibility of CLI;
+      // TODO(eternal): For now I won't send anything. Maybe it's responsibility of CLI;
       // co_await sendError("Protocol Error");
       continue;
     }
 
-    spdlog::debug("String read successfully: {}",
-                  std::get<std::string>(value.data));
+    std::optional<Command> command = Command::toCommand(value);
 
-    // Command command = Command::toCommand(value);
-    /* TODO
+    if (!command.has_value()) {
+      // TODO(eternal): ... send error
+      continue;
+    }
+
+    /* TODO(eternal)
     auto response = dispatcher_.execute(cmd);
     co_await write(response);
     */
