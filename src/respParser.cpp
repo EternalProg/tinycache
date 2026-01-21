@@ -26,7 +26,7 @@ class RespParserImpl {
                                        Iterator end, std::uint64_t& consumed,
                                        RespValue& outValue);
 
-  static RespValue::Type determineType(char type);
+  static RespValue::Type determineRespType(char type);
 
   template <typename Iterator>
   static Iterator findCrlf(Iterator it, Iterator end);
@@ -99,7 +99,7 @@ ParsingResult RespParserImpl::parseImpl(Iterator begin, Iterator end,
 
   auto it = begin;
 
-  auto type = determineType(*it);
+  auto type = determineRespType(*it);
   if (type == RespValue::Type::kUnknown) {
     return ParsingResult::kError;
   }
@@ -145,7 +145,7 @@ ParsingResult RespParserImpl::dispatchParsing(RespValue::Type type, Iterator it,
   return ParsingResult::kError;
 }
 
-RespValue::Type RespParserImpl::determineType(char type) {
+RespValue::Type RespParserImpl::determineRespType(char type) {
   switch (type) {
     case '+':
       return RespValue::Type::kSimpleString;
