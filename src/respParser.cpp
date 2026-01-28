@@ -55,63 +55,27 @@ class RespParserImpl {
                                   std::uint64_t& consumed, RespValue& outValue);
 };
 
-// ParsingResult RespParserImpl::parseImpl(asio::streambuf& buffer,
-//                                         RespValue& outValue) {
-//   if (buffer.size() == 0) {
-//     return ParsingResult::kNeedMoreData;
-//   }
-
-//   auto data = buffer.data();
-//   auto begin = boost::asio::buffers_begin(data);
-//   auto end = boost::asio::buffers_end(data);
-
-//   if (begin == end) {
-//     return ParsingResult::kNeedMoreData;
-//   }
-
-//   auto it = begin;
-
-//   auto type = determineType(*it);
-//   if (type == RespValue::Type::kUnknown) {
-//     return ParsingResult::kError;
-//   }
-//   ++it;
-
-//   // Because the first char is consumed to determine type
-//   std::uint64_t consumed = 1;
-
-//   ParsingResult result = dispatchParsing(type, it, end, consumed, outValue);
-
-//   if (result != ParsingResult::kNeedMoreData) {
-//     buffer.consume(consumed);
-//   }
-
-//   return result;
-// }
-
 template <std::random_access_iterator Iterator>
 ParsingResult RespParserImpl::parseImpl(Iterator begin, Iterator end,
                                         std::uint64_t& consumed,
                                         RespValue& outValue) {
+  consumed = 0;
+
   if (begin == end) {
     return ParsingResult::kNeedMoreData;
   }
 
-  auto it = begin;
-
-  auto type = determineRespType(*it);
+  auto type = determineRespType(*begin);
   if (type == RespValue::Type::kUnknown) {
     return ParsingResult::kError;
   }
-  ++it;
 
-  // Because the first char is consumed to determine type
-  std::uint64_t tmp_consumed = 1;
+  std::uint64_t inner_consumed = 0;
 
-  ParsingResult result = dispatchParsing(type, it, end, consumed, outValue);
+  auto result = dispatchParsing(type, begin + 1, end, inner_consumed, outValue);
 
-  if (result != ParsingResult::kNeedMoreData) {
-    consumed += tmp_consumed;
+  if (result == ParsingResult::kReady) {
+    consumed = 1 + inner_consumed;  // type byte + payload
   }
 
   return result;
@@ -330,26 +294,29 @@ ParsingResult RespParserImpl::parseArray(Iterator it, Iterator end,
     return ParsingResult::kError;
   }
 
-  outValue.type = RespValue::Type::kArray;
   std::vector<RespValue> elements;
   elements.reserve(number_of_elements);
 
-  std::size_t tmp_consumed = std::distance(it, header_crlf) + 2;
+  std::size_t offset = std::distance(it, header_crlf) + 2;
+
+  // TODO(eternal): rework to state machine to avoid deep recursion
   for (std::size_t i = 0; i < number_of_elements; ++i) {
-    // Not sure if it's good to fill the elements, because there can be error at the end.
-    // And also we go through all the elements every time
     RespValue tmp;
-    auto result = parseImpl(it + tmp_consumed, end, tmp_consumed, tmp);
-    if (result == ParsingResult::kReady) {
-      elements.push_back(std::move(tmp));
-    } else {
+    std::size_t elem_consumed = 0;
+
+    auto result = parseImpl(it + offset, end, elem_consumed, tmp);
+
+    if (result != ParsingResult::kReady) {
       return result;
     }
+
+    elements.push_back(std::move(tmp));
+    offset += elem_consumed;
   }
 
+  outValue.type = RespValue::Type::kArray;
   outValue.data = std::move(elements);
-  consumed += tmp_consumed;
-
+  consumed += offset;
   return ParsingResult::kReady;
 }
 
