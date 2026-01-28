@@ -6,6 +6,8 @@
 #include <boost/asio/strand.hpp>
 #include <boost/asio/streambuf.hpp>
 #include <memory>
+#include <string>
+#include "commandExecutor.hpp"
 
 namespace asio = boost::asio;
 
@@ -21,9 +23,10 @@ class Session : std::enable_shared_from_this<Session> {
   asio::ip::tcp::socket socket_;
   asio::streambuf buffer_;
   asio::strand<asio::ip::tcp::socket::executor_type> strand_;
+  CommandExecutor executor_;
 
   [[nodiscard]] asio::awaitable<ReadResult> read();
-  asio::awaitable<void> write();
+  asio::awaitable<void> write(std::string message);
 };
 
 }  // namespace tinycache

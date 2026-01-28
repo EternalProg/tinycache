@@ -1,11 +1,11 @@
 #include <spdlog/spdlog.h>
 #include <boost/asio/bind_executor.hpp>
 #include <boost/asio/error.hpp>
-#include <boost/asio/read_until.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/asio/write.hpp>
 #include <session.hpp>
 #include <string>
+#include <string_view>
 #include "command.hpp"
 #include "respParser.hpp"
 #include "respValue.hpp"
@@ -13,7 +13,41 @@
 
 namespace tinycache {
 
-inline constexpr std::size_t kMaxMessageSize = 1024;
+namespace {
+
+std::string encodeSimpleString(std::string_view data) {
+  std::string output;
+  output.reserve(data.size() + 3);
+  output.push_back('+');
+  output.append(data);
+  output.append("\r\n");
+  return output;
+}
+
+std::string encodeError(std::string_view data) {
+  std::string output;
+  output.reserve(data.size() + 3);
+  output.push_back('-');
+  output.append(data);
+  output.append("\r\n");
+  return output;
+}
+
+std::string encodeRespValue(const RespValue& value) {
+  if (value.type == RespValue::Type::kSimpleString &&
+      std::holds_alternative<std::string>(value.data)) {
+    return encodeSimpleString(std::get<std::string>(value.data));
+  }
+
+  if (value.type == RespValue::Type::kError &&
+      std::holds_alternative<std::string>(value.data)) {
+    return encodeError(std::get<std::string>(value.data));
+  }
+
+  return encodeError("ERR unsupported response");
+}
+
+}  // namespace
 
 Session::Session(asio::ip::tcp::socket socket)
     : socket_(std::move(socket)),
@@ -40,23 +74,25 @@ asio::awaitable<void> Session::run() {
       continue;
     }
 
-    spdlog::debug("String read successfully: {}",
-                  std::get<std::string>(value.data));
+    auto command = Command::toCommand(value);
+    if (!command.has_value()) {
+      co_await write(encodeError("ERR invalid command"));
+      continue;
+    }
 
-    // Command command = Command::toCommand(value);
-    /* TODO
-    auto response = dispatcher_.execute(cmd);
-    co_await write(response);
-    */
-
-    co_await write();
+    auto response = executor_.execute(*command);
+    co_await write(encodeRespValue(response));
   }
   spdlog::debug("Session closed");
 }
 
 asio::awaitable<ReadResult> Session::read() {
-  auto [ec, nbytes] = co_await asio::async_read_until(
-      socket_, buffer_, "\n", asio::bind_executor(strand_, kAsTuple));
+  std::size_t before = buffer_.size();
+  auto [ec, nbytes] =
+      co_await asio::async_read(socket_, buffer_, asio::transfer_at_least(1),
+                                asio::bind_executor(strand_, kAsTuple));
+
+  std::size_t after = buffer_.size();
 
   if (ec == asio::error::eof) {
     spdlog::debug("Client closed");
@@ -72,13 +108,12 @@ asio::awaitable<ReadResult> Session::read() {
   // std::string line;
   // std::getline(is, line);
 
-  spdlog::debug("Read message");
+  spdlog::debug("Read message ({} bytes, buffer {} -> {})", nbytes, before, after);
 
   co_return ReadResult::kNewMessage;
 }
 
-asio::awaitable<void> Session::write() {
-  std::string message = "OK\n";
+asio::awaitable<void> Session::write(std::string message) {
   auto [ec, _] = co_await asio::async_write(
       socket_, asio::buffer(message), asio::bind_executor(strand_, kAsTuple));
 
