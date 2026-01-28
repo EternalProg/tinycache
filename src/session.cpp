@@ -6,6 +6,7 @@
 #include <session.hpp>
 #include <string>
 #include <string_view>
+#include <vector>
 #include "command.hpp"
 #include "respParser.hpp"
 #include "respValue.hpp"
@@ -42,6 +43,47 @@ std::string encodeRespValue(const RespValue& value) {
   if (value.type == RespValue::Type::kError &&
       std::holds_alternative<std::string>(value.data)) {
     return encodeError(std::get<std::string>(value.data));
+  }
+
+  if (value.type == RespValue::Type::kBulkString &&
+      std::holds_alternative<std::string>(value.data)) {
+    const auto& data = std::get<std::string>(value.data);
+    std::string output;
+    output.reserve(data.size() + 32);
+    output.push_back('$');
+    output.append(std::to_string(data.size()));
+    output.append("\r\n");
+    output.append(data);
+    output.append("\r\n");
+    return output;
+  }
+
+  if (value.type == RespValue::Type::kInteger &&
+      std::holds_alternative<std::int64_t>(value.data)) {
+    std::string output;
+    output.reserve(32);
+    output.push_back(':');
+    output.append(std::to_string(std::get<std::int64_t>(value.data)));
+    output.append("\r\n");
+    return output;
+  }
+
+  if (value.type == RespValue::Type::kNullBulkString) {
+    return "$-1\r\n";
+  }
+
+  if (value.type == RespValue::Type::kArray &&
+      std::holds_alternative<std::vector<RespValue>>(value.data)) {
+    const auto& elements = std::get<std::vector<RespValue>>(value.data);
+    std::string output;
+    output.reserve(32);
+    output.push_back('*');
+    output.append(std::to_string(elements.size()));
+    output.append("\r\n");
+    for (const auto& element : elements) {
+      output.append(encodeRespValue(element));
+    }
+    return output;
   }
 
   return encodeError("ERR unsupported response");
@@ -87,12 +129,9 @@ asio::awaitable<void> Session::run() {
 }
 
 asio::awaitable<ReadResult> Session::read() {
-  std::size_t before = buffer_.size();
   auto [ec, nbytes] =
       co_await asio::async_read(socket_, buffer_, asio::transfer_at_least(1),
                                 asio::bind_executor(strand_, kAsTuple));
-
-  std::size_t after = buffer_.size();
 
   if (ec == asio::error::eof) {
     spdlog::debug("Client closed");
@@ -108,7 +147,7 @@ asio::awaitable<ReadResult> Session::read() {
   // std::string line;
   // std::getline(is, line);
 
-  spdlog::debug("Read message ({} bytes, buffer {} -> {})", nbytes, before, after);
+  spdlog::debug("Read message ({} bytes)", nbytes);
 
   co_return ReadResult::kNewMessage;
 }

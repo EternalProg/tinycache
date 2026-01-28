@@ -37,7 +37,7 @@ std::optional<Command> Command::toCommand(const RespValue& value) {
 
   std::string command_name = toUpper(std::get<std::string>(elements[0].data));
   Command command;
-  command.args.reserve(elements.size() > 0 ? elements.size() - 1 : 0);
+  command.args.reserve(elements.size() - 1);
 
   for (std::size_t i = 1; i < elements.size(); ++i) {
     if (elements[i].type != RespValue::Type::kBulkString ||
