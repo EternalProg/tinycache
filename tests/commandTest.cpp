@@ -42,6 +42,20 @@ TEST(CommandTest, RejectsNonArrayValue) {
   EXPECT_FALSE(command.has_value());
 }
 
+TEST(CommandTest, ParsesLowercaseCommandNames) {
+  RespValue value;
+  value.type = RespValue::Type::kArray;
+  value.data =
+      std::vector<RespValue>{makeBulkString("gEt"), makeBulkString("foo")};
+
+  auto command = Command::toCommand(value);
+
+  ASSERT_TRUE(command.has_value());
+  EXPECT_EQ(command->type, CommandType::kGet);
+  ASSERT_EQ(command->args.size(), 1u);
+  EXPECT_EQ(command->args[0], "foo");
+}
+
 TEST(CommandTest, ParsesSetCommandFromArray) {
   RespValue value;
   value.type = RespValue::Type::kArray;

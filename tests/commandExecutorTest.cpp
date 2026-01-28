@@ -56,3 +56,27 @@ TEST(CommandExecutorTest, UnknownCommandReturnsError) {
   EXPECT_EQ(response.type, RespValue::Type::kError);
   EXPECT_EQ(std::get<std::string>(response.data), "ERR unknown command");
 }
+
+TEST(CommandExecutorTest, DelWithoutKeyReturnsError) {
+  auto response = execute(CommandType::kDel, {});
+
+  EXPECT_EQ(response.type, RespValue::Type::kError);
+  EXPECT_EQ(std::get<std::string>(response.data),
+            "ERR wrong number of arguments for 'del'");
+}
+
+TEST(CommandExecutorTest, ExpireWithoutTimeoutReturnsError) {
+  auto response = execute(CommandType::kExpire, {"foo"});
+
+  EXPECT_EQ(response.type, RespValue::Type::kError);
+  EXPECT_EQ(std::get<std::string>(response.data),
+            "ERR wrong number of arguments for 'expire'");
+}
+
+TEST(CommandExecutorTest, TtlWithoutKeyReturnsError) {
+  auto response = execute(CommandType::kTtl, {});
+
+  EXPECT_EQ(response.type, RespValue::Type::kError);
+  EXPECT_EQ(std::get<std::string>(response.data),
+            "ERR wrong number of arguments for 'ttl'");
+}

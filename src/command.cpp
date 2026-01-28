@@ -5,10 +5,9 @@
 namespace tinycache {
 namespace {
 
-std::string toUpper(std::string value) {
+void toUpper(std::string& value) {
   std::transform(value.begin(), value.end(), value.begin(),
                  [](unsigned char ch) { return static_cast<char>(std::toupper(ch)); });
-  return value;
 }
 
 }  // namespace
@@ -35,7 +34,8 @@ std::optional<Command> Command::toCommand(const RespValue& value) {
     return std::nullopt;
   }
 
-  std::string command_name = toUpper(std::get<std::string>(elements[0].data));
+  std::string command_name = std::get<std::string>(elements[0].data);
+  toUpper(command_name);
   Command command;
   command.args.reserve(elements.size() - 1);
 

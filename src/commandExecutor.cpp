@@ -40,14 +40,26 @@ RespValue CommandExecutor::execute(const Command& cmd) {
       return makeOk();
     }
     case CommandType::kDel: {
+      if (cmd.args.empty()) {
+        spdlog::warn("DEL missing key");
+        return makeError("ERR wrong number of arguments for 'del'");
+      }
       spdlog::debug("DEL");
       return makeOk();
     }
     case CommandType::kExpire: {
+      if (cmd.args.size() < 2) {
+        spdlog::warn("EXPIRE missing key/timeout");
+        return makeError("ERR wrong number of arguments for 'expire'");
+      }
       spdlog::debug("EXPIRE");
       return makeOk();
     }
     case CommandType::kTtl: {
+      if (cmd.args.size() != 1) {
+        spdlog::warn("TTL missing key");
+        return makeError("ERR wrong number of arguments for 'ttl'");
+      }
       spdlog::debug("TTL");
       return makeOk();
     }
@@ -55,6 +67,8 @@ RespValue CommandExecutor::execute(const Command& cmd) {
       spdlog::warn("Unknown command");
       return makeError("ERR unknown command");
     }
+    default:
+      return makeError("ERR unknown command");
   }
 
   return makeError("ERR unknown command");
