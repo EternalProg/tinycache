@@ -18,7 +18,7 @@ class LruCache {
   [[nodiscard]] bool del(std::string_view key);
 
  private:
-  std::unordered_map<std::string_view, std::string_view> map_;
+  std::unordered_map<std::string, std::string> map_;
 };
 
 }  // namespace tinycache

@@ -11,11 +11,11 @@ std::optional<std::string> LruCache::get(std::string_view key) {
 }
 
 void LruCache::set(std::string_view key, std::string_view value) {
-  map_[key] = value;
+  map_[std::string(key)] = std::string(value);
 }
 
 bool LruCache::del(std::string_view key) {
-  return map_.erase(key) > 0;
+  return map_.erase(std::string(key)) > 0;
 }
 
 }  // namespace tinycache
