@@ -28,6 +28,10 @@ CommandType determineCommandType(std::string_view type_sv) {
     return CommandType::kExpire;
   if (type_sv == "TTL")
     return CommandType::kTtl;
+  if (type_sv == "PING")
+    return CommandType::kPing;
+  if (type_sv == "COMMAND")
+    return CommandType::kCommand;
 
   return CommandType::kUnknown;
 }
