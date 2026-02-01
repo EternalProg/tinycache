@@ -9,6 +9,7 @@
 namespace tinycache {
 // https://redis.io/docs/latest/develop/reference/protocol-spec/
 // RESP2 types
+
 struct RespValue {
   enum class Type {
     kUnknown,
@@ -20,10 +21,12 @@ struct RespValue {
     kArray,
   };
 
-  Type type;
-  std::variant<std::string,            // Simple / Error / Bulk
-               std::int64_t,           // Integer
-               std::vector<RespValue>  // Array
+  using RespArray = std::vector<RespValue>;
+
+  Type type = RespValue::Type::kUnknown;
+  std::variant<std::string,   // Simple / Error / Bulk
+               std::int64_t,  // Integer
+               RespArray      // Array
                >
       data;
 };
