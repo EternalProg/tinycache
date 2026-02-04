@@ -46,8 +46,8 @@ constexpr std::size_t kMaxArgs = 10;
 const std::unordered_map<CommandType, CommandSpec> kSpecs = {
     {CommandType::kGet, {1, 1}},        {CommandType::kSet, {2, 2}},
     {CommandType::kDel, {1, kMaxArgs}}, {CommandType::kExpire, {2, 2}},
-    {CommandType::kTtl, {1, 1}},
-};
+    {CommandType::kTtl, {1, 1}},        {CommandType::kPing, {0, 1}},
+    {CommandType::kCommand, {0, 2}}};
 
 bool validateArgs(CommandType type, std::size_t argc) {
   auto command_spec = kSpecs.find(type)->second;
