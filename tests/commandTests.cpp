@@ -121,7 +121,7 @@ TEST_F(CommandTest, EmptyArrayReturnsNullopt) {
 }
 
 TEST_F(CommandTest, UnknownCommandReturnsNullopt) {
-  RespValue v = makeArray({bulk("PING")});
+  RespValue v = makeArray({bulk("UNKNOWN")});
 
   auto cmd = Command::toCommand(v);
 
