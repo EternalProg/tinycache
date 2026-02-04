@@ -4,12 +4,12 @@
 #include <boost/asio/read_until.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/asio/write.hpp>
+#include <command.hpp>
+#include <respParser.hpp>
+#include <respValue.hpp>
 #include <session.hpp>
-#include <string>
-#include "command.hpp"
-#include "respParser.hpp"
-#include "respValue.hpp"
-#include "utils.hpp"
+#include <utils.hpp>
+#include "respSerializer.hpp"
 
 namespace tinycache {
 
@@ -35,53 +35,44 @@ asio::awaitable<void> Session::run() {
     }
 
     if (parsing_result == ParsingResult::kError) {
-      // TODO(eternal): For now I won't send anything. Maybe it's responsibility of CLI;
-      // co_await sendError("Protocol Error");
+      co_await write(RespSerializer::serialize(
+          RespValue(RespValue::Type::kError, "ERR malformed request")));
       continue;
     }
 
     std::optional<Command> command = Command::toCommand(value);
 
     if (!command.has_value()) {
-      // TODO(eternal): ... send error
+      co_await write(RespSerializer::serialize(
+          RespValue(RespValue::Type::kError, "ERR invalid command")));
       continue;
     }
 
-    /* TODO(eternal)
-    auto response = dispatcher_.execute(cmd);
-    co_await write(response);
-    */
-
-    co_await write();
+    auto response = executor_.execute(*command);
+    co_await write(RespSerializer::serialize(response));
   }
   spdlog::debug("Session closed");
 }
 
 asio::awaitable<ReadResult> Session::read() {
-  auto [ec, nbytes] = co_await asio::async_read_until(
-      socket_, buffer_, "\n", asio::bind_executor(strand_, kAsTuple));
+  auto [ec, nbytes] =
+      co_await asio::async_read(socket_, buffer_, asio::transfer_at_least(1),
+                                asio::bind_executor(strand_, kAsTuple));
 
   if (ec == asio::error::eof) {
-    spdlog::debug("Client closed");
-    co_return ReadResult::kCloseConnection;
+    spdlog::debug("Client closed (EOF)");
+    co_return ReadResult::kNewMessage;  // allow parsing
   }
 
   if (ec) {
-    spdlog::error("Read: {}", ec.message());
+    spdlog::error("Read error: {}", ec.message());
     co_return ReadResult::kReadError;
   }
-
-  // std::istream is(&buffer_);
-  // std::string line;
-  // std::getline(is, line);
-
-  spdlog::debug("Read message");
 
   co_return ReadResult::kNewMessage;
 }
 
-asio::awaitable<void> Session::write() {
-  std::string message = "OK\n";
+asio::awaitable<void> Session::write(std::string_view message) {
   auto [ec, _] = co_await asio::async_write(
       socket_, asio::buffer(message), asio::bind_executor(strand_, kAsTuple));
 
