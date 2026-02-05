@@ -43,14 +43,35 @@ RespValue CommandExecutor::execute(const Command& cmd) {
     }
     case CommandType::kExpire: {
       spdlog::debug("EXPIRE");
-      // TODO(eternal): Implement EXPIRE commands
-      // https://redis-doc-test.readthedocs.io/en/latest/commands/expire/
+      // EXPIRE key seconds
+      if (cmd.args.size() != 2) {
+        response =
+            RespValue(RespValue::Type::kError,
+                      "ERR wrong number of arguments for 'expire' command");
+        break;
+      }
+
+      try {
+        std::size_t seconds = std::stoull(cmd.args[1]);
+        cache_.expire(cmd.args[0], seconds);
+        response = RespValue(RespValue::Type::kInteger, 1LL);
+      } catch (const std::exception& e) {
+        response = RespValue(RespValue::Type::kError,
+                             "ERR value is not an integer or out of range");
+      }
       break;
     }
     case CommandType::kTtl: {
       spdlog::debug("TTL");
-      // TODO(eternal): Implement TTL commands
-      // https://redis-doc-test.readthedocs.io/en/latest/commands/ttl/
+      // TTL key
+      if (cmd.args.size() != 1) {
+        response = RespValue(RespValue::Type::kError,
+                             "ERR wrong number of arguments for 'ttl' command");
+        break;
+      }
+
+      std::int64_t ttl_value = cache_.ttl(cmd.args[0]);
+      response = RespValue(RespValue::Type::kInteger, ttl_value);
       break;
     }
     case CommandType::kPing: {
