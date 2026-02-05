@@ -64,6 +64,8 @@ std::string RespSerializerImpl::serialize(const RespValue& value) {
       return serializeNullBulkString();
     case RespValue::Type::kArray:
       return serializeArray(value);
+    case RespValue::Type::kNullArray:
+      return "*-1\r\n";
     default:
       return "-ERR unknown type\r\n";
   }

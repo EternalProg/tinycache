@@ -19,6 +19,7 @@ struct RespValue {
     kBulkString,
     kNullBulkString,
     kArray,
+    kNullArray,
   };
   using RespArray = std::vector<RespValue>;
 

@@ -281,7 +281,7 @@ ParsingResult RespParserImpl::parseArray(Iterator it, Iterator end,
   }
 
   std::string header(it, header_crlf);
-  std::size_t number_of_elements = 0;
+  std::int64_t number_of_elements = 0;
 
   try {
     std::size_t pos = 0;
@@ -294,13 +294,24 @@ ParsingResult RespParserImpl::parseArray(Iterator it, Iterator end,
     return ParsingResult::kError;
   }
 
+  // Handle null array (*-1\r\n)
+  if (number_of_elements < 0) {
+    if (number_of_elements != -1) {
+      return ParsingResult::kError;  // Invalid negative array size
+    }
+    outValue.type = RespValue::Type::kNullArray;
+    outValue.data = std::string("");  // Empty data for null array
+    consumed += std::distance(it, header_crlf) + 2;
+    return ParsingResult::kReady;
+  }
+
   std::vector<RespValue> elements;
   elements.reserve(number_of_elements);
 
   std::size_t offset = std::distance(it, header_crlf) + 2;
 
   // TODO(eternal): rework to state machine to avoid deep recursion
-  for (std::size_t i = 0; i < number_of_elements; ++i) {
+  for (std::int64_t i = 0; i < number_of_elements; ++i) {
     RespValue tmp;
     std::size_t elem_consumed = 0;
 
