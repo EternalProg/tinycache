@@ -7,67 +7,67 @@ using tinycache::LruCache;
 
 class LruCacheTest : public ::testing::Test {
  protected:
-  LruCache cache{100};  // Small capacity for testing eviction
+  LruCache cache_{100};  // Small capacity for testing eviction
 };
 
 // Basic Get/Set tests
 TEST_F(LruCacheTest, SetAndGetReturnsValue) {
-  cache.set("key1", "value1");
-  auto result = cache.get("key1");
+  cache_.set("key1", "value1");
+  auto result = cache_.get("key1");
 
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), "value1");
 }
 
 TEST_F(LruCacheTest, GetNonExistentKeyReturnsNullopt) {
-  auto result = cache.get("nonexistent");
+  auto result = cache_.get("nonexistent");
   EXPECT_FALSE(result.has_value());
 }
 
 TEST_F(LruCacheTest, SetMultipleKeysAndGet) {
-  cache.set("key1", "value1");
-  cache.set("key2", "value2");
-  cache.set("key3", "value3");
+  cache_.set("key1", "value1");
+  cache_.set("key2", "value2");
+  cache_.set("key3", "value3");
 
-  EXPECT_EQ(cache.get("key1").value(), "value1");
-  EXPECT_EQ(cache.get("key2").value(), "value2");
-  EXPECT_EQ(cache.get("key3").value(), "value3");
+  EXPECT_EQ(cache_.get("key1").value(), "value1");
+  EXPECT_EQ(cache_.get("key2").value(), "value2");
+  EXPECT_EQ(cache_.get("key3").value(), "value3");
 }
 
 TEST_F(LruCacheTest, OverwriteExistingKey) {
-  cache.set("key1", "value1");
-  cache.set("key1", "updated_value");
+  cache_.set("key1", "value1");
+  cache_.set("key1", "updated_value");
 
-  auto result = cache.get("key1");
+  auto result = cache_.get("key1");
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), "updated_value");
 }
 
 // Deletion tests
 TEST_F(LruCacheTest, DeleteExistingKey) {
-  cache.set("key1", "value1");
-  bool deleted = cache.del("key1");
+  cache_.set("key1", "value1");
+  bool deleted = cache_.del("key1");
 
   EXPECT_TRUE(deleted);
-  EXPECT_FALSE(cache.get("key1").has_value());
+  EXPECT_FALSE(cache_.get("key1").has_value());
 }
 
 TEST_F(LruCacheTest, DeleteNonExistentKeyReturnsFalse) {
-  bool deleted = cache.del("nonexistent");
+  bool deleted = cache_.del("nonexistent");
   EXPECT_FALSE(deleted);
 }
 
 TEST_F(LruCacheTest, DeleteOneKeyDoesNotAffectOthers) {
-  cache.set("key1", "value1");
-  cache.set("key2", "value2");
-  cache.set("key3", "value3");
+  cache_.set("key1", "value1");
+  cache_.set("key2", "value2");
+  cache_.set("key3", "value3");
 
-  bool deleted = cache.del("key2");
+  bool deleted = cache_.del("key2");
   EXPECT_TRUE(deleted);
 
-  EXPECT_TRUE(cache.get("key1").has_value());
-  EXPECT_FALSE(cache.get("key2").has_value());
-  EXPECT_TRUE(cache.get("key3").has_value());
+  EXPECT_TRUE(cache_.get("key1").has_value());
+  EXPECT_FALSE(cache_.get("key2").has_value());
+  EXPECT_TRUE(cache_.get("key3").has_value());
 }
 
 // LRU Eviction tests
@@ -136,7 +136,7 @@ TEST_F(LruCacheTest, MultipleEvictionsWithAccess) {
   // Current state: [key3, key2, key1] (front to back)
 
   // Access key1 to make it most recently used
-  small_cache.get("key1");
+  (void)small_cache.get("key1");
   // Current state: [key1, key3, key2]
 
   // Add key4, should evict key2 (least recently used)
@@ -150,91 +150,91 @@ TEST_F(LruCacheTest, MultipleEvictionsWithAccess) {
 
 // TTL/Expiration tests
 TEST_F(LruCacheTest, ExpireAndTtlReturnNoExpirationInitially) {
-  cache.set("key1", "value1");
-  std::int64_t ttl = cache.ttl("key1");
+  cache_.set("key1", "value1");
+  std::int64_t ttl = cache_.ttl("key1");
 
   EXPECT_EQ(ttl, -1);  // -1 means no expiration
 }
 
 TEST_F(LruCacheTest, TtlReturnsNegativeTwoForNonExistentKey) {
-  std::int64_t ttl = cache.ttl("nonexistent");
+  std::int64_t ttl = cache_.ttl("nonexistent");
   EXPECT_EQ(ttl, -2);  // -2 means key doesn't exist
 }
 
 TEST_F(LruCacheTest, ExpireSetsTtl) {
-  cache.set("key1", "value1");
-  cache.expire("key1", 10);
+  cache_.set("key1", "value1");
+  cache_.expire("key1", 10);
 
-  std::int64_t ttl = cache.ttl("key1");
+  std::int64_t ttl = cache_.ttl("key1");
   EXPECT_GE(ttl, 9);  // Should be around 10, accounting for execution time
   EXPECT_LE(ttl, 10);
 }
 
 TEST_F(LruCacheTest, ExpireOnNonExistentKeyDoesNothing) {
-  cache.expire("nonexistent", 10);
-  std::int64_t ttl = cache.ttl("nonexistent");
+  cache_.expire("nonexistent", 10);
+  std::int64_t ttl = cache_.ttl("nonexistent");
   EXPECT_EQ(ttl, -2);  // Still non-existent
 }
 
 TEST_F(LruCacheTest, ExpiredKeyReturnsNullopt) {
-  cache.set("key1", "value1");
-  cache.expire("key1", 1);  // Expire in 1 second
+  cache_.set("key1", "value1");
+  cache_.expire("key1", 1);  // Expire in 1 second
 
   std::this_thread::sleep_for(std::chrono::milliseconds(1100));
 
-  auto result = cache.get("key1");
+  auto result = cache_.get("key1");
   EXPECT_FALSE(result.has_value());
 }
 
 TEST_F(LruCacheTest, ExpiredKeyTtlReturnsNegativeTwo) {
-  cache.set("key1", "value1");
-  cache.expire("key1", 1);  // Expire in 1 second
+  cache_.set("key1", "value1");
+  cache_.expire("key1", 1);  // Expire in 1 second
 
   std::this_thread::sleep_for(std::chrono::milliseconds(1100));
 
-  std::int64_t ttl = cache.ttl("key1");
+  std::int64_t ttl = cache_.ttl("key1");
   EXPECT_EQ(ttl, -2);
 }
 
 TEST_F(LruCacheTest, SettingValueClearsExpiration) {
-  cache.set("key1", "value1");
-  cache.expire("key1", 1);
+  cache_.set("key1", "value1");
+  cache_.expire("key1", 1);
 
   // Update the value
-  cache.set("key1", "updated_value");
+  cache_.set("key1", "updated_value");
 
   // Sleep and check that key still exists (expiration was cleared)
   std::this_thread::sleep_for(std::chrono::milliseconds(1100));
 
-  auto result = cache.get("key1");
+  auto result = cache_.get("key1");
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), "updated_value");
 }
 
 TEST_F(LruCacheTest, TtlDecreasesOverTime) {
-  cache.set("key1", "value1");
-  cache.expire("key1", 10);
+  cache_.set("key1", "value1");
+  cache_.expire("key1", 10);
 
-  std::int64_t ttl1 = cache.ttl("key1");
+  std::int64_t ttl1 = cache_.ttl("key1");
   std::this_thread::sleep_for(
       std::chrono::milliseconds(1500));  // Sleep 1.5 seconds
-  std::int64_t ttl2 = cache.ttl("key1");
+  std::int64_t ttl2 = cache_.ttl("key1");
 
   EXPECT_GT(ttl1, ttl2);  // ttl should decrease by at least 1 second
 }
 
 // Empty string and edge case tests
 TEST_F(LruCacheTest, StoresEmptyString) {
-  cache.set("key1", "");
-  auto result = cache.get("key1");
+  cache_.set("key1", "");
+  auto result = cache_.get("key1");
 
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), "");
 }
 
 TEST_F(LruCacheTest, StoresEmptyKey) {
-  cache.set("", "value1");
-  auto result = cache.get("");
+  cache_.set("", "value1");
+  auto result = cache_.get("");
 
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), "value1");
@@ -242,9 +242,9 @@ TEST_F(LruCacheTest, StoresEmptyKey) {
 
 TEST_F(LruCacheTest, StoresLargeValues) {
   std::string large_value(10000, 'x');
-  cache.set("key1", large_value);
+  cache_.set("key1", large_value);
 
-  auto result = cache.get("key1");
+  auto result = cache_.get("key1");
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), large_value);
   EXPECT_EQ(result.value().size(), 10000);
@@ -252,9 +252,9 @@ TEST_F(LruCacheTest, StoresLargeValues) {
 
 TEST_F(LruCacheTest, StoresSpecialCharacters) {
   std::string special = "!@#$%^&*()_+-=[]{}|;:',.<>?/~`";
-  cache.set("key1", special);
+  cache_.set("key1", special);
 
-  auto result = cache.get("key1");
+  auto result = cache_.get("key1");
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), special);
 }
@@ -286,28 +286,28 @@ TEST_F(LruCacheTest, CapacityOfOne) {
 }
 
 TEST_F(LruCacheTest, DeleteThenReInsert) {
-  cache.set("key1", "value1");
-  bool deleted = cache.del("key1");
+  cache_.set("key1", "value1");
+  bool deleted = cache_.del("key1");
   EXPECT_TRUE(deleted);
-  cache.set("key1", "new_value1");
+  cache_.set("key1", "new_value1");
 
-  auto result = cache.get("key1");
+  auto result = cache_.get("key1");
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), "new_value1");
 }
 
 TEST_F(LruCacheTest, AccessAfterExpiration) {
-  cache.set("key1", "value1");
-  cache.expire("key1", 1);
+  cache_.set("key1", "value1");
+  cache_.expire("key1", 1);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(1100));
 
   // First access should return nullopt and clean up
-  auto result = cache.get("key1");
+  auto result = cache_.get("key1");
   EXPECT_FALSE(result.has_value());
 
   // Second access should also return nullopt
-  result = cache.get("key1");
+  result = cache_.get("key1");
   EXPECT_FALSE(result.has_value());
 }
 
@@ -323,7 +323,7 @@ TEST_F(LruCacheTest, ComplexMixOfOperations) {
   // Order: [key4, key3, key2, key1]
 
   // Access key1 to make it most recent
-  small_cache.get("key1");
+  (void)small_cache.get("key1");
   // Order: [key1, key4, key3, key2]
 
   // Delete key3
