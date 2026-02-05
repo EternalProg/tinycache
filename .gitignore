@@ -43,3 +43,6 @@ build/
 
 # debug information files
 *.dwo
+
+# bv (beads viewer) local config and caches
+.bv/
