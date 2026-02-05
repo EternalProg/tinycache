@@ -34,7 +34,8 @@ class LruCache {
 
   [[nodiscard]] std::optional<std::string> get(std::string_view key);
 
-  void set(std::string_view key, std::string_view value);
+  void set(std::string_view key, std::string_view value,
+           std::optional<std::size_t> expire_seconds = std::nullopt);
 
   // Set expiration time in seconds from now
   void expire(std::string_view key, std::size_t seconds);
@@ -46,8 +47,6 @@ class LruCache {
 
  private:
   void evict_lru();
-  bool is_expired(const std::optional<std::chrono::steady_clock::time_point>&
-                      expire_at) const;
 
   std::unordered_map<Key, Entry> map_;
   std::list<Key> lru_list_;

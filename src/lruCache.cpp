@@ -4,6 +4,18 @@
 
 namespace tinycache {
 
+namespace {
+bool is_expired(
+    const std::optional<std::chrono::steady_clock::time_point>& expire_at) {
+  if (!expire_at.has_value()) {
+    return false;  // No expiration set
+  }
+
+  return std::chrono::steady_clock::now() >= expire_at.value();
+}
+
+}  // namespace
+
 std::optional<std::string> LruCache::get(std::string_view key) {
   std::lock_guard lock(m_);
   auto it = map_.find(std::string(key));
@@ -24,7 +36,8 @@ std::optional<std::string> LruCache::get(std::string_view key) {
   return std::nullopt;
 }
 
-void LruCache::set(std::string_view key, std::string_view value) {
+void LruCache::set(std::string_view key, std::string_view value,
+                   std::optional<std::size_t> expire_seconds) {
   std::lock_guard lock(m_);
 
   Key key_str(key);
@@ -33,7 +46,12 @@ void LruCache::set(std::string_view key, std::string_view value) {
   auto it = map_.find(key_str);
   if (it != map_.end()) {
     it->second.value = std::string(value);
-    it->second.expire_at = std::nullopt;  // Clear expiration on update
+    it->second.expire_at =
+        expire_seconds.has_value()
+            ? std::optional<std::chrono::steady_clock::time_point>(
+                  std::chrono::steady_clock::now() +
+                  std::chrono::seconds(expire_seconds.value()))
+            : std::nullopt;
     lru_list_.splice(lru_list_.begin(), lru_list_, it->second.lru_it);
     return;
   }
@@ -108,16 +126,6 @@ void LruCache::evict_lru() {
     map_.erase(lru_key);
     lru_list_.pop_back();
   }
-}
-
-bool LruCache::is_expired(
-    const std::optional<std::chrono::steady_clock::time_point>& expire_at)
-    const {
-  if (!expire_at.has_value()) {
-    return false;  // No expiration set
-  }
-
-  return std::chrono::steady_clock::now() >= expire_at.value();
 }
 
 }  // namespace tinycache
