@@ -15,14 +15,14 @@ enum class ReadResult { kNewMessage, kCloseConnection, kReadError };
 
 class Session : public std::enable_shared_from_this<Session> {
  public:
-  explicit Session(asio::ip::tcp::socket socket);
+  explicit Session(asio::ip::tcp::socket socket, CommandExecutor& executor);
   asio::awaitable<void> run();
 
  private:
   asio::ip::tcp::socket socket_;
   asio::streambuf buffer_;
   asio::strand<asio::ip::tcp::socket::executor_type> strand_;
-  CommandExecutor executor_;
+  CommandExecutor& executor_;
 
   [[nodiscard]] asio::awaitable<ReadResult> read();
   asio::awaitable<void> write(std::string_view message);

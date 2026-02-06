@@ -32,7 +32,7 @@ asio::awaitable<void> Server::listener() {
     }
     spdlog::info("New Connection");
 
-    auto session = std::make_shared<Session>(std::move(socket));
+    auto session = std::make_shared<Session>(std::move(socket), executor_);
 
     co_spawn(
         io_context_,

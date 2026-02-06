@@ -15,9 +15,10 @@ namespace tinycache {
 
 inline constexpr std::size_t kMaxMessageSize = 1024;
 
-Session::Session(asio::ip::tcp::socket socket)
+Session::Session(asio::ip::tcp::socket socket, CommandExecutor& executor)
     : socket_(std::move(socket)),
-      strand_(asio::make_strand(socket_.get_executor())) {}
+      strand_(asio::make_strand(socket_.get_executor())),
+      executor_(executor) {}
 
 asio::awaitable<void> Session::run() {
   for (;;) {
