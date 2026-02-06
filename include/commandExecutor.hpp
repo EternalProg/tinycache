@@ -10,7 +10,7 @@ namespace tinycache {
 
 class CommandExecutor {
  public:
-  RespValue execute(const Command& cmd);
+  RespValue execute(Command& cmd);
 
  private:
   LruCache cache_;
