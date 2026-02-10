@@ -4,6 +4,7 @@
 #include <optional>
 #include <unordered_map>
 #include "respValue.hpp"
+#include "utils.hpp"
 
 namespace tinycache {
 
@@ -44,12 +45,13 @@ struct CommandSpec {
 constexpr std::size_t kMaxArgs = 10;
 
 const std::unordered_map<CommandType, CommandSpec> kSpecs = {
-    {CommandType::kGet, {1, 1}},        {CommandType::kSet, {2, 2}},
+    {CommandType::kGet, {1, 1}},        {CommandType::kSet, {2, 4}},
     {CommandType::kDel, {1, kMaxArgs}}, {CommandType::kExpire, {2, 2}},
     {CommandType::kTtl, {1, 1}},        {CommandType::kPing, {0, 1}},
     {CommandType::kCommand, {0, 2}}};
 
 bool validateArgs(CommandType type, std::size_t argc) {
+  // Case with unknown command type should be handled in toCommand, so we can assume the type is valid here.
   auto command_spec = kSpecs.find(type)->second;
   return argc >= command_spec.minArgs && argc <= command_spec.maxArgs;
 }
@@ -69,7 +71,7 @@ std::optional<Command> Command::toCommand(RespValue& value) {
   }
 
   auto type_str = std::move(std::get<std::string>(arr[0].data));
-  std::transform(type_str.begin(), type_str.end(), type_str.begin(), ::toupper);
+  to_uppercase(type_str);
 
   CommandType type = determineCommandType(type_str);
 
