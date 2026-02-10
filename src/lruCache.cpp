@@ -42,16 +42,18 @@ void LruCache::set(std::string_view key, std::string_view value,
 
   Key key_str(key);
 
+  auto expire_at =
+      expire_seconds.has_value()
+          ? std::optional(std::chrono::steady_clock::now() +
+                          std::chrono::seconds(expire_seconds.value()))
+          : std::nullopt;
+
   // If key already exists, update it and move to front
   auto it = map_.find(key_str);
   if (it != map_.end()) {
     it->second.value = std::string(value);
-    it->second.expire_at =
-        expire_seconds.has_value()
-            ? std::optional<std::chrono::steady_clock::time_point>(
-                  std::chrono::steady_clock::now() +
-                  std::chrono::seconds(expire_seconds.value()))
-            : std::nullopt;
+    // Any previous time to live associated with the key is discarded on successful SET operation
+    it->second.expire_at = expire_at;
     lru_list_.splice(lru_list_.begin(), lru_list_, it->second.lru_it);
     return;
   }
@@ -63,7 +65,7 @@ void LruCache::set(std::string_view key, std::string_view value,
 
   // Insert new entry at front
   lru_list_.push_front(key_str);
-  map_[key_str] = Entry{std::string(value), lru_list_.begin(), std::nullopt};
+  map_[key_str] = Entry{std::string(value), lru_list_.begin(), expire_at};
 }
 
 bool LruCache::del(std::string_view key) {
