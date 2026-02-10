@@ -10,7 +10,7 @@ namespace tinycache {
 // https://redis.io/docs/latest/develop/reference/protocol-spec/
 // RESP2 types
 
-struct RespValue {
+struct [[nodiscard]] RespValue {
   enum class Type {
     kUnknown,
     kSimpleString,
