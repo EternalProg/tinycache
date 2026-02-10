@@ -95,7 +95,7 @@ TEST_F(LruCacheTest, AccessingKeyMovesItToFront) {
   small_cache.set("key3", "value3");
 
   // Access key1 to make it recently used
-  small_cache.get("key1");
+  (void)small_cache.get("key1");
 
   // Add key4, should evict key2 (now the least recently used)
   small_cache.set("key4", "value4");
