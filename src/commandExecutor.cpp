@@ -84,17 +84,12 @@ RespValue processDelCommand(Command& cmd, LruCache& cache) {
 }
 
 RespValue processExpireCommand(Command& cmd, LruCache& cache) {
-  spdlog::debug("EXPIRE");
-
   // EXPIRE key seconds
-  if (cmd.args.size() != 2) {
-    return RespValue(RespValue::Type::kError,
-                     "ERR wrong number of arguments for 'expire' command");
-  }
-
   try {
     std::size_t seconds = std::stoull(cmd.args[1]);
     cache.expire(cmd.args[0], seconds);
+    spdlog::debug("EXPIRE {} {}", cmd.args[0], seconds);
+
     return RespValue(RespValue::Type::kInteger, 1LL);
   } catch (const std::exception& e) {
     return RespValue(RespValue::Type::kError,
@@ -104,12 +99,6 @@ RespValue processExpireCommand(Command& cmd, LruCache& cache) {
 
 RespValue processTtlCommand(Command& cmd, LruCache& cache) {
   spdlog::debug("TTL");
-
-  // TTL key
-  if (cmd.args.size() != 1) {
-    return RespValue(RespValue::Type::kError,
-                     "ERR wrong number of arguments for 'ttl' command");
-  }
 
   std::int64_t ttl_value = cache.ttl(cmd.args[0]);
   return RespValue(RespValue::Type::kInteger, ttl_value);
@@ -126,10 +115,9 @@ RespValue processPingCommand(Command& cmd, [[maybe_unused]] LruCache& cache) {
 
 RespValue processCommandCommand(Command& cmd,
                                 [[maybe_unused]] LruCache& cache) {
-  spdlog::debug("COMMAND");
-
   // Return the list of supported commands
   if (cmd.args.empty()) {
+    spdlog::debug("COMMAND");
     RespValue::RespArray commands;
     for (const auto& def : kCommands) {
       RespValue::RespArray cmd_info;
@@ -147,6 +135,7 @@ RespValue processCommandCommand(Command& cmd,
   if (subcommand == "INFO") {
     // Returns @array-reply of details about multiple Redis commands.
     // Same result format as COMMAND except you can specify which commands get returned.
+    spdlog::debug("COMMAND INFO");
     RespValue::RespArray commands;
     for (std::size_t i = 1; i < cmd.args.size(); ++i) {
       std::string_view cmd_name = cmd.args[i];
@@ -168,6 +157,7 @@ RespValue processCommandCommand(Command& cmd,
 
   if (subcommand == "COUNT") {
     // Returns @integer-reply of number of total commands in this Redis server.
+    spdlog::debug("COMMAND COUNT");
     auto count = static_cast<std::int64_t>(kCommands.size());
     return RespValue(RespValue::Type::kInteger, count);
   }
