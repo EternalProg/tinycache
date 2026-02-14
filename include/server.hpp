@@ -5,7 +5,7 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <cstdint>
-#include "commandExecutor.hpp"
+#include "lruCache.hpp"
 
 namespace asio = boost::asio;
 
@@ -16,7 +16,7 @@ class Server {
   void run();
 
  private:
-  CommandExecutor executor_;  // stores the cache inside
+  LruCache cache_;
   asio::io_context io_context_;
   asio::ip::tcp::acceptor acceptor_;
 

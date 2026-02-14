@@ -4,6 +4,7 @@
 #include <memory>
 #include <server.hpp>
 #include <session.hpp>
+#include "expirationController.hpp"
 #include "utils.hpp"
 
 namespace tinycache {
@@ -19,11 +20,16 @@ Server::Server(std::uint16_t port)
 
 void Server::run() {
   co_spawn(io_context_, listener(), asio::detached);
-  spdlog::info("Server is running");
+  co_spawn(io_context_, ExpirationController(cache_).cleaning_loop(),
+           asio::detached);
   io_context_.run();
 }
 
 asio::awaitable<void> Server::listener() {
+  spdlog::info("Server is running on port {}",
+               acceptor_.local_endpoint().port());
+  spdlog::info("Press Ctrl+C to stop the server");
+
   for (;;) {
     auto [ec, socket] = co_await acceptor_.async_accept(kAsTuple);
     if (ec) {
@@ -32,7 +38,8 @@ asio::awaitable<void> Server::listener() {
     }
     spdlog::info("New Connection");
 
-    auto session = std::make_shared<Session>(std::move(socket), executor_);
+    auto session =
+        std::make_shared<Session>(std::move(socket), CommandExecutor(cache_));
 
     co_spawn(
         io_context_,
