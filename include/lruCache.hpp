@@ -47,11 +47,12 @@ class LruCache {
 
   [[nodiscard]] bool del(std::string_view key);
 
-  [[nodiscard]] std::vector<Key> get_expired_keys();
-  [[nodiscard]] TimePoint get_next_expire_time();
+  [[nodiscard]] std::optional<TimePoint> get_next_expire_time();
+  void remove_expired_keys(TimePoint now);
 
  private:
   void evict_lru();
+  void remove_key(std::unordered_map<Key, Entry>::iterator it);
 
   std::unordered_map<Key, Entry> map_;
   std::list<Key> lru_list_;

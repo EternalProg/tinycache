@@ -16,21 +16,30 @@ bool is_expired(
 
 }  // namespace
 
+void LruCache::remove_key(std::unordered_map<Key, Entry>::iterator it) {
+  if (it != map_.end()) {
+    Entry& entry = it->second;
+    lru_list_.erase(entry.lru_it);
+    expire_map_.erase(entry.expire_it);
+    map_.erase(it);
+  }
+}
+
 std::optional<std::string> LruCache::get(std::string_view key) {
   std::lock_guard lock(m_);
   auto it = map_.find(std::string(key));
 
   if (it != map_.end()) {
+    Entry& entry = it->second;
     // Check if key has expired
-    if (is_expired(it->second.expire_at)) {
-      map_.erase(it);
-      lru_list_.erase(it->second.lru_it);
+    if (is_expired(entry.expire_at)) {
+      remove_key(it);
       return std::nullopt;
     }
 
     // Move to front (most recently used)
-    lru_list_.splice(lru_list_.begin(), lru_list_, it->second.lru_it);
-    return std::string(it->second.value);
+    lru_list_.splice(lru_list_.begin(), lru_list_, entry.lru_it);
+    return std::string(entry.value);
   }
 
   return std::nullopt;
@@ -97,15 +106,9 @@ bool LruCache::del(std::string_view key) {
   std::lock_guard lock(m_);
 
   auto it = map_.find(std::string(key));
-  if (it != map_.end()) {
-    Entry& entry = it->second;
-    lru_list_.erase(entry.lru_it);
-    expire_map_.erase(entry.expire_it);
-    map_.erase(it);
-    return true;
-  }
+  remove_key(it);
 
-  return false;
+  return it != map_.end();
 }
 
 bool LruCache::expire(std::string_view key, std::size_t seconds) {
@@ -143,53 +146,59 @@ std::int64_t LruCache::ttl(std::string_view key) {
     return -2;
   }
 
+  Entry& entry = it->second;
+
   // Check if key has expired
-  if (is_expired(it->second.expire_at)) {
-    map_.erase(it);
-    lru_list_.erase(it->second.lru_it);
+  if (is_expired(entry.expire_at)) {
+    remove_key(it);
     return -2;
   }
 
   // Key has no expiration
-  if (!it->second.expire_at.has_value()) {
+  if (!entry.expire_at.has_value()) {
     return -1;
   }
 
   // Calculate remaining time to live
   auto now = std::chrono::steady_clock::now();
-  auto remaining = it->second.expire_at.value() - now;
+  auto remaining = entry.expire_at.value() - now;
   auto seconds =
       std::chrono::duration_cast<std::chrono::seconds>(remaining).count();
 
   return (seconds > 0) ? seconds : 0;
 }
 
-std::vector<Key> LruCache::get_expired_keys() {
+void LruCache::remove_expired_keys(TimePoint now) {
   std::lock_guard lock(m_);
-  std::vector<Key> expired_keys;
-
-  return expired_keys;
-}
-
-TimePoint LruCache::get_next_expire_time() {
-  std::lock_guard lock(m_);
-  TimePoint next_expire_time = TimePoint::max();
-
-  for (const auto& [key, entry] : map_) {
-    if (entry.expire_at.has_value() &&
-        entry.expire_at.value() < next_expire_time) {
-      next_expire_time = entry.expire_at.value();
-    }
+  if (expire_map_.empty()) {
+    return;
   }
 
-  return next_expire_time;
+  for (auto& [expire_time, key] : expire_map_) {
+    if (expire_time <= now) {
+      auto it = map_.find(key);
+      remove_key(it);
+    } else {
+      break;
+    }
+  }
+}
+
+std::optional<TimePoint> LruCache::get_next_expire_time() {
+  std::lock_guard lock(m_);
+  if (expire_map_.empty()) {
+    return std::nullopt;
+  }
+
+  return expire_map_.begin()->first;
 }
 
 void LruCache::evict_lru() {
   if (!lru_list_.empty()) {
     const Key& lru_key = lru_list_.back();
-    map_.erase(lru_key);
     lru_list_.pop_back();
+    expire_map_.erase(map_[lru_key].expire_it);
+    map_.erase(lru_key);
   }
 }
 
