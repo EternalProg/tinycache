@@ -51,10 +51,21 @@ void LruCache::set(std::string_view key, std::string_view value,
   // If key already exists, update it and move to front
   auto it = map_.find(key_str);
   if (it != map_.end()) {
-    it->second.value = std::string(value);
+    Entry& entry = it->second;
+    entry.value = std::string(value);
     // Any previous time to live associated with the key is discarded on successful SET operation
-    it->second.expire_at = expire_at;
-    lru_list_.splice(lru_list_.begin(), lru_list_, it->second.lru_it);
+    if (entry.expire_at.has_value()) {
+      // Remove old expiration
+      expire_map_.erase(entry.expire_it);
+    }
+
+    if (expire_at.has_value()) {
+      // Add new expiration
+      entry.expire_it = expire_map_.emplace(expire_at.value(), key_str);
+    }
+    entry.expire_at = expire_at;
+
+    lru_list_.splice(lru_list_.begin(), lru_list_, entry.lru_it);
     return;
   }
 

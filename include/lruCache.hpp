@@ -3,9 +3,9 @@
 
 #include <chrono>
 #include <list>
+#include <map>
 #include <mutex>
 #include <optional>
-#include <queue>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -13,17 +13,19 @@
 namespace tinycache {
 
 using Key = std::string;
+using TimePoint = std::chrono::steady_clock::time_point;
 
 struct Entry {
   std::string value;
+  std::optional<TimePoint> expire_at;
   std::list<Key>::iterator lru_it;
-  std::optional<std::chrono::steady_clock::time_point> expire_at;
+  std::multimap<TimePoint, Key>::iterator expire_it;
 };
 
-struct ExpireItem {
-  Key key;
-  std::size_t expire_time;
-};
+// struct ExpireItem {
+//   Key key;
+//   TimePoint expire_time;
+// };
 
 class LruCache {
  public:
@@ -41,16 +43,19 @@ class LruCache {
   void expire(std::string_view key, std::size_t seconds);
 
   // Get time-to-live in seconds (-1 if no expiration, -2 if key doesn't exist)
-  std::int64_t ttl(std::string_view key);
+  [[nodiscard]] std::int64_t ttl(std::string_view key);
 
   [[nodiscard]] bool del(std::string_view key);
+
+  [[nodiscard]] std::vector<Key> get_expired_keys();
+  [[nodiscard]] TimePoint get_next_expire_time();
 
  private:
   void evict_lru();
 
   std::unordered_map<Key, Entry> map_;
   std::list<Key> lru_list_;
-  std::priority_queue<ExpireItem> expire_queue_;
+  std::multimap<TimePoint, Key> expire_map_;
   std::size_t capacity_;
 
   std::mutex m_;
