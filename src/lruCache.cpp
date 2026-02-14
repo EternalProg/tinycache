@@ -48,11 +48,12 @@ void LruCache::set(std::string_view key, std::string_view value,
                           std::chrono::seconds(expire_seconds.value()))
           : std::nullopt;
 
-  // If key already exists, update it and move to front
+  // Case 1: key already exists, update it and move to front
   auto it = map_.find(key_str);
   if (it != map_.end()) {
     Entry& entry = it->second;
     entry.value = std::string(value);
+
     // Any previous time to live associated with the key is discarded on successful SET operation
     if (entry.expire_at.has_value()) {
       // Remove old expiration
@@ -62,6 +63,8 @@ void LruCache::set(std::string_view key, std::string_view value,
     if (expire_at.has_value()) {
       // Add new expiration
       entry.expire_it = expire_map_.emplace(expire_at.value(), key_str);
+    } else {
+      entry.expire_it = expire_map_.end();
     }
     entry.expire_at = expire_at;
 
@@ -69,14 +72,25 @@ void LruCache::set(std::string_view key, std::string_view value,
     return;
   }
 
+  // Case 2: Insert new entry
+
   // Check if we need to evict
   if (map_.size() >= capacity_) {
     evict_lru();
   }
 
-  // Insert new entry at front
   lru_list_.push_front(key_str);
-  map_[key_str] = Entry{std::string(value), lru_list_.begin(), expire_at};
+  auto expire_it = expire_map_.end();
+  if (expire_at.has_value()) {
+    expire_it = expire_map_.insert({expire_at.value(), key_str});
+  }
+
+  auto new_entry = Entry{.value = std::string(value),
+                         .expire_at = expire_at,
+                         .lru_it = lru_list_.begin(),
+                         .expire_it = expire_it};
+
+  map_[key_str] = new_entry;
 }
 
 bool LruCache::del(std::string_view key) {
@@ -131,6 +145,27 @@ std::int64_t LruCache::ttl(std::string_view key) {
       std::chrono::duration_cast<std::chrono::seconds>(remaining).count();
 
   return (seconds > 0) ? seconds : 0;
+}
+
+std::vector<Key> LruCache::get_expired_keys() {
+  std::lock_guard lock(m_);
+  std::vector<Key> expired_keys;
+
+  return expired_keys;
+}
+
+TimePoint LruCache::get_next_expire_time() {
+  std::lock_guard lock(m_);
+  TimePoint next_expire_time = TimePoint::max();
+
+  for (const auto& [key, entry] : map_) {
+    if (entry.expire_at.has_value() &&
+        entry.expire_at.value() < next_expire_time) {
+      next_expire_time = entry.expire_at.value();
+    }
+  }
+
+  return next_expire_time;
 }
 
 void LruCache::evict_lru() {
