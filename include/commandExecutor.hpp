@@ -10,10 +10,11 @@ namespace tinycache {
 
 class CommandExecutor {
  public:
+  explicit CommandExecutor(LruCache& cache);
   RespValue execute(Command& cmd);
 
  private:
-  LruCache cache_;
+  LruCache& cache_;
 };
 
 }  // namespace tinycache

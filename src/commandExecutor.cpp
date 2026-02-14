@@ -185,6 +185,8 @@ const std::unordered_map<CommandType, CommandHandler> kCommandHandlers = {
 
 }  // namespace
 
+CommandExecutor::CommandExecutor(LruCache& cache) : cache_(cache) {}
+
 RespValue CommandExecutor::execute(Command& cmd) {
   auto it = kCommandHandlers.find(cmd.type);
   if (it != kCommandHandlers.end()) {
