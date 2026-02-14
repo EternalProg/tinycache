@@ -40,7 +40,7 @@ class LruCache {
            std::optional<std::size_t> expire_seconds = std::nullopt);
 
   // Set expiration time in seconds from now
-  void expire(std::string_view key, std::size_t seconds);
+  bool expire(std::string_view key, std::size_t seconds);
 
   // Get time-to-live in seconds (-1 if no expiration, -2 if key doesn't exist)
   [[nodiscard]] std::int64_t ttl(std::string_view key);

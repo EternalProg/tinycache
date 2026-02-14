@@ -82,7 +82,7 @@ void LruCache::set(std::string_view key, std::string_view value,
   lru_list_.push_front(key_str);
   auto expire_it = expire_map_.end();
   if (expire_at.has_value()) {
-    expire_it = expire_map_.insert({expire_at.value(), key_str});
+    expire_it = expire_map_.emplace(expire_at.value(), key_str);
   }
 
   auto new_entry = Entry{.value = std::string(value),
@@ -98,7 +98,9 @@ bool LruCache::del(std::string_view key) {
 
   auto it = map_.find(std::string(key));
   if (it != map_.end()) {
-    lru_list_.erase(it->second.lru_it);
+    Entry& entry = it->second;
+    lru_list_.erase(entry.lru_it);
+    expire_map_.erase(entry.expire_it);
     map_.erase(it);
     return true;
   }
@@ -106,14 +108,29 @@ bool LruCache::del(std::string_view key) {
   return false;
 }
 
-void LruCache::expire(std::string_view key, std::size_t seconds) {
+bool LruCache::expire(std::string_view key, std::size_t seconds) {
   std::lock_guard lock(m_);
 
   auto it = map_.find(std::string(key));
   if (it != map_.end()) {
-    it->second.expire_at =
+    Entry& entry = it->second;
+
+    // Remove old expiration
+    if (entry.expire_at.has_value()) {
+      expire_map_.erase(entry.expire_it);
+    }
+
+    auto expire_at =
         std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+    auto expire_it = expire_map_.emplace(expire_at, std::string(key));
+
+    entry.expire_at = expire_at;
+    entry.expire_it = expire_it;
+
+    return true;
   }
+
+  return false;
 }
 
 std::int64_t LruCache::ttl(std::string_view key) {
