@@ -20,7 +20,9 @@ void LruCache::remove_key(std::unordered_map<Key, Entry>::iterator it) {
   if (it != map_.end()) {
     Entry& entry = it->second;
     lru_list_.erase(entry.lru_it);
-    expire_map_.erase(entry.expire_it);
+    if (entry.expire_it != expire_map_.end()) {
+      expire_map_.erase(entry.expire_it);
+    }
     map_.erase(it);
   }
 }
@@ -64,8 +66,7 @@ void LruCache::set(std::string_view key, std::string_view value,
     entry.value = std::string(value);
 
     // Any previous time to live associated with the key is discarded on successful SET operation
-    if (entry.expire_at.has_value()) {
-      // Remove old expiration
+    if (entry.expire_it != expire_map_.end()) {
       expire_map_.erase(entry.expire_it);
     }
 
@@ -106,9 +107,10 @@ bool LruCache::del(std::string_view key) {
   std::lock_guard lock(m_);
 
   auto it = map_.find(std::string(key));
+  bool existed = it != map_.end();
   remove_key(it);
 
-  return it != map_.end();
+  return existed;
 }
 
 bool LruCache::expire(std::string_view key, std::size_t seconds) {
@@ -119,7 +121,7 @@ bool LruCache::expire(std::string_view key, std::size_t seconds) {
     Entry& entry = it->second;
 
     // Remove old expiration
-    if (entry.expire_at.has_value()) {
+    if (entry.expire_it != expire_map_.end()) {
       expire_map_.erase(entry.expire_it);
     }
 
@@ -174,12 +176,15 @@ void LruCache::remove_expired_keys(TimePoint now) {
     return;
   }
 
-  for (auto& [expire_time, key] : expire_map_) {
-    if (expire_time <= now) {
-      auto it = map_.find(key);
-      remove_key(it);
-    } else {
-      break;
+  auto it = expire_map_.begin();
+  while (it != expire_map_.end() && it->first <= now) {
+    Key key = it->second;
+    it = expire_map_.erase(it);
+
+    auto map_it = map_.find(key);
+    if (map_it != map_.end()) {
+      lru_list_.erase(map_it->second.lru_it);
+      map_.erase(map_it);
     }
   }
 }
@@ -197,8 +202,13 @@ void LruCache::evict_lru() {
   if (!lru_list_.empty()) {
     const Key& lru_key = lru_list_.back();
     lru_list_.pop_back();
-    expire_map_.erase(map_[lru_key].expire_it);
-    map_.erase(lru_key);
+    auto it = map_.find(lru_key);
+    if (it != map_.end()) {
+      if (it->second.expire_it != expire_map_.end()) {
+        expire_map_.erase(it->second.expire_it);
+      }
+      map_.erase(it);
+    }
   }
 }
 

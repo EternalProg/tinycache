@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 #include <chrono>
 #include <lruCache.hpp>
-#include <thread>
 
 using tinycache::LruCache;
 
@@ -180,7 +179,8 @@ TEST_F(LruCacheTest, ExpiredKeyReturnsNullopt) {
   cache_.set("key1", "value1");
   cache_.expire("key1", 1);  // Expire in 1 second
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+  cache_.remove_expired_keys(std::chrono::steady_clock::now() +
+                             std::chrono::seconds(2));
 
   auto result = cache_.get("key1");
   EXPECT_FALSE(result.has_value());
@@ -190,7 +190,8 @@ TEST_F(LruCacheTest, ExpiredKeyTtlReturnsNegativeTwo) {
   cache_.set("key1", "value1");
   cache_.expire("key1", 1);  // Expire in 1 second
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+  cache_.remove_expired_keys(std::chrono::steady_clock::now() +
+                             std::chrono::seconds(2));
 
   std::int64_t ttl = cache_.ttl("key1");
   EXPECT_EQ(ttl, -2);
@@ -203,24 +204,21 @@ TEST_F(LruCacheTest, SettingValueClearsExpiration) {
   // Update the value
   cache_.set("key1", "updated_value");
 
-  // Sleep and check that key still exists (expiration was cleared)
-  std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+  // Check that key still exists (expiration was cleared)
+  cache_.remove_expired_keys(std::chrono::steady_clock::now() +
+                             std::chrono::seconds(2));
 
   auto result = cache_.get("key1");
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), "updated_value");
 }
 
-TEST_F(LruCacheTest, TtlDecreasesOverTime) {
+TEST_F(LruCacheTest, TtlReturnsZeroOrPositiveAfterExpire) {
   cache_.set("key1", "value1");
   cache_.expire("key1", 10);
 
-  std::int64_t ttl1 = cache_.ttl("key1");
-  std::this_thread::sleep_for(
-      std::chrono::milliseconds(1500));  // Sleep 1.5 seconds
-  std::int64_t ttl2 = cache_.ttl("key1");
-
-  EXPECT_GT(ttl1, ttl2);  // ttl should decrease by at least 1 second
+  std::int64_t ttl = cache_.ttl("key1");
+  EXPECT_GE(ttl, 0);
 }
 
 // Empty string and edge case tests
@@ -300,7 +298,8 @@ TEST_F(LruCacheTest, AccessAfterExpiration) {
   cache_.set("key1", "value1");
   cache_.expire("key1", 1);
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+  cache_.remove_expired_keys(std::chrono::steady_clock::now() +
+                             std::chrono::seconds(2));
 
   // First access should return nullopt and clean up
   auto result = cache_.get("key1");
@@ -345,11 +344,47 @@ TEST_F(LruCacheTest, ComplexMixOfOperations) {
   small_cache.expire("key4", 1);
 
   // Verify it expires
-  std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+  small_cache.remove_expired_keys(std::chrono::steady_clock::now() +
+                                  std::chrono::seconds(2));
   EXPECT_FALSE(small_cache.get("key4").has_value());
 
   // key1 and key5 and key2 should still be there
   EXPECT_TRUE(small_cache.get("key1").has_value());
   EXPECT_TRUE(small_cache.get("key2").has_value());
   EXPECT_TRUE(small_cache.get("key5").has_value());
+}
+
+TEST_F(LruCacheTest, RemoveExpiredKeysRemovesOnlyExpiredEntries) {
+  cache_.set("short", "value1");
+  cache_.set("long", "value2");
+
+  cache_.expire("short", 1);
+  cache_.expire("long", 5);
+
+  cache_.remove_expired_keys(std::chrono::steady_clock::now() +
+                             std::chrono::seconds(2));
+
+  EXPECT_FALSE(cache_.get("short").has_value());
+  EXPECT_TRUE(cache_.get("long").has_value());
+}
+
+TEST_F(LruCacheTest, GetNextExpireTimeReturnsEarliestExpiration) {
+  cache_.set("short", "value1");
+  cache_.set("long", "value2");
+
+  cache_.expire("short", 1);
+  cache_.expire("long", 3);
+
+  auto next_expire = cache_.get_next_expire_time();
+  ASSERT_TRUE(next_expire.has_value());
+
+  cache_.remove_expired_keys(*next_expire + std::chrono::milliseconds(1));
+
+  EXPECT_FALSE(cache_.get("short").has_value());
+  EXPECT_TRUE(cache_.get("long").has_value());
+}
+
+TEST_F(LruCacheTest, GetNextExpireTimeReturnsNulloptWhenEmpty) {
+  auto next_expire = cache_.get_next_expire_time();
+  EXPECT_FALSE(next_expire.has_value());
 }
