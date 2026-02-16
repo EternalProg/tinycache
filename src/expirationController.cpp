@@ -3,11 +3,10 @@
 
 namespace tinycache {
 
-ExpirationController::ExpirationController(LruCache& cache) : cache_(cache) {
-  spdlog::debug("Expiration controller started");
-}
+ExpirationController::ExpirationController(LruCache& cache) : cache_(cache) {}
 
 asio::awaitable<void> ExpirationController::cleaning_loop() {
+  spdlog::debug("ExpirationController: cleaning_loop started");
   auto executor = co_await asio::this_coro::executor;
   asio::steady_timer timer(executor);
 
@@ -22,7 +21,6 @@ asio::awaitable<void> ExpirationController::cleaning_loop() {
         co_await timer.async_wait(asio::use_awaitable);
       }
     } else {
-      // No keys with expiration, wait for a fixed interval before checking again
       timer.expires_after(std::chrono::seconds(3));
       co_await timer.async_wait(asio::use_awaitable);
     }

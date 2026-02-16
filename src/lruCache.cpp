@@ -1,3 +1,4 @@
+#include <spdlog/spdlog.h>
 #include <chrono>
 #include <lruCache.hpp>
 #include <mutex>
@@ -183,6 +184,7 @@ void LruCache::remove_expired_keys(TimePoint now) {
 
     auto map_it = map_.find(key);
     if (map_it != map_.end()) {
+      spdlog::debug("Removing expired key: {}", key);
       lru_list_.erase(map_it->second.lru_it);
       map_.erase(map_it);
     }
