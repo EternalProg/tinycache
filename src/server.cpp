@@ -10,7 +10,8 @@
 namespace tinycache {
 
 Server::Server(std::uint16_t port)
-    : acceptor_(io_context_, {boost::asio::ip::tcp::v4(), port}),
+    : expiration_controller_(cache_),
+      acceptor_(io_context_, {boost::asio::ip::tcp::v4(), port}),
       signals_(io_context_, SIGINT, SIGTERM) {
   signals_.async_wait([&](auto, auto) {
     spdlog::info("Server is closing");
@@ -20,8 +21,7 @@ Server::Server(std::uint16_t port)
 
 void Server::run() {
   co_spawn(io_context_, listener(), asio::detached);
-  co_spawn(io_context_, ExpirationController(cache_).cleaning_loop(),
-           asio::detached);
+  co_spawn(io_context_, expiration_controller_.cleaning_loop(), asio::detached);
   io_context_.run();
 }
 

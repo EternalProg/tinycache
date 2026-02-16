@@ -5,6 +5,7 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <cstdint>
+#include "expirationController.hpp"
 #include "lruCache.hpp"
 
 namespace asio = boost::asio;
@@ -17,6 +18,7 @@ class Server {
 
  private:
   LruCache cache_;
+  ExpirationController expiration_controller_;
   asio::io_context io_context_;
   asio::ip::tcp::acceptor acceptor_;
 
