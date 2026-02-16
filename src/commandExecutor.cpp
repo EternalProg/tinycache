@@ -87,10 +87,10 @@ RespValue processExpireCommand(Command& cmd, LruCache& cache) {
   // EXPIRE key seconds
   try {
     std::size_t seconds = std::stoull(cmd.args[1]);
-    cache.expire(cmd.args[0], seconds);
+    auto result = cache.expire(cmd.args[0], seconds);
     spdlog::debug("EXPIRE {} {}", cmd.args[0], seconds);
 
-    return RespValue(RespValue::Type::kInteger, 1LL);
+    return RespValue(RespValue::Type::kInteger, result ? 1 : 0);
   } catch (const std::exception& e) {
     return RespValue(RespValue::Type::kError,
                      "ERR value is not an integer or out of range");
