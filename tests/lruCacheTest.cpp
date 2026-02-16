@@ -170,9 +170,11 @@ TEST_F(LruCacheTest, ExpireSetsTtl) {
 }
 
 TEST_F(LruCacheTest, ExpireOnNonExistentKeyDoesNothing) {
-  cache_.expire("nonexistent", 10);
+  auto result = cache_.expire("nonexistent", 10);
   std::int64_t ttl = cache_.ttl("nonexistent");
-  EXPECT_EQ(ttl, -2);  // Still non-existent
+
+  EXPECT_FALSE(result);  // Expire should return false for non-existent key
+  EXPECT_EQ(ttl, -2);    // Still non-existent
 }
 
 TEST_F(LruCacheTest, ExpiredKeyReturnsNullopt) {
