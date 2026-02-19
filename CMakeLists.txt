@@ -40,15 +40,33 @@ set(MAIN_FILE src/main.cpp)
 add_executable(${PROJECT_NAME} ${MAIN_FILE})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${TINYCACHE_LIB} tinycache_flags)
 
-# GTest configuration
+# Testing and Benchmarking configuration
 include(FetchContent)
+
+# GTest configuration
 FetchContent_Declare(
   googletest
   GIT_REPOSITORY https://github.com/google/googletest.git
   GIT_TAG v1.17.0
 )
 
-FetchContent_MakeAvailable(googletest)
-add_subdirectory(tests)
+# Google Benchmark configuration
+FetchContent_Declare(
+  benchmark
+  GIT_REPOSITORY https://github.com/google/benchmark.git
+  GIT_TAG v1.9.5
+)
+
+FetchContent_MakeAvailable(googletest benchmark)
+option(ENABLE_TESTS "Build Google Test tests" ON)
+if(ENABLE_TESTS)
+  add_subdirectory(tests)
+endif()
+
+# Option to enable benchmarks
+option(ENABLE_BENCHMARKS "Build Google Benchmark benchmarks" OFF)
+if(ENABLE_BENCHMARKS)
+  add_subdirectory(benchmarks)
+endif()
 
 
