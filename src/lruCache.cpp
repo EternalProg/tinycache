@@ -20,7 +20,12 @@ bool is_expired(
 void LruCache::remove_key(std::unordered_map<Key, Entry>::iterator it) {
   if (it != map_.end()) {
     Entry& entry = it->second;
-    lru_list_.erase(entry.lru_it);
+
+    // Check if lru_it is valid before erasing
+    if (entry.lru_it != lru_list_.end()) {
+      lru_list_.erase(entry.lru_it);
+    }
+
     if (entry.expire_it != expire_map_.end()) {
       expire_map_.erase(entry.expire_it);
     }
@@ -185,7 +190,16 @@ void LruCache::remove_expired_keys(TimePoint now) {
     auto map_it = map_.find(key);
     if (map_it != map_.end()) {
       spdlog::debug("Removing expired key: {}", key);
-      lru_list_.erase(map_it->second.lru_it);
+      Entry& entry = map_it->second;
+
+      // Check if lru_it is valid before erasing
+      if (entry.lru_it != lru_list_.end()) {
+        lru_list_.erase(entry.lru_it);
+      }
+
+      // Clear the iterator to mark it as invalid
+      entry.expire_it = expire_map_.end();
+
       map_.erase(map_it);
     }
   }
@@ -201,16 +215,21 @@ std::optional<TimePoint> LruCache::get_next_expire_time() {
 }
 
 void LruCache::evict_lru() {
-  if (!lru_list_.empty()) {
-    const Key& lru_key = lru_list_.back();
-    lru_list_.pop_back();
-    auto it = map_.find(lru_key);
-    if (it != map_.end()) {
-      if (it->second.expire_it != expire_map_.end()) {
-        expire_map_.erase(it->second.expire_it);
-      }
-      map_.erase(it);
+  // Requires m_ to be held by the caller.
+  if (lru_list_.empty()) {
+    return;
+  }
+
+  Key lru_key = lru_list_.back();
+  lru_list_.pop_back();
+  auto it = map_.find(lru_key);
+  if (it != map_.end()) {
+    auto& entry = it->second;
+    if (entry.expire_it != expire_map_.end()) {
+      expire_map_.erase(entry.expire_it);
+      entry.expire_it = expire_map_.end();
     }
+    map_.erase(it);
   }
 }
 
