@@ -138,7 +138,8 @@ RespValue processCommandCommand(Command& cmd,
     spdlog::debug("COMMAND INFO");
     RespValue::RespArray commands;
     for (std::size_t i = 1; i < cmd.args.size(); ++i) {
-      std::string_view cmd_name = cmd.args[i];
+      std::string& cmd_name = cmd.args[i];
+      to_uppercase(cmd_name);
       const auto* it = std::find_if(kCommands.begin(), kCommands.end(),
                                     [cmd_name](const CommandDefinition& def) {
                                       return def.name == cmd_name;

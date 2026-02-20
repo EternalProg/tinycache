@@ -35,13 +35,13 @@ struct CommandDefinition {
 };
 
 static constexpr auto kCommands =
-    std::to_array<CommandDefinition>({{CommandType::kPing, "ping", 1},
-                                      {CommandType::kCommand, "command", -1},
-                                      {CommandType::kGet, "get", 2},
-                                      {CommandType::kSet, "set", -3},
-                                      {CommandType::kDel, "del", -2},
-                                      {CommandType::kExpire, "expire", 3},
-                                      {CommandType::kTtl, "ttl", 2}});
+    std::to_array<CommandDefinition>({{CommandType::kPing, "PING", 1},
+                                      {CommandType::kCommand, "COMMAND", -1},
+                                      {CommandType::kGet, "GET", 2},
+                                      {CommandType::kSet, "SET", -3},
+                                      {CommandType::kDel, "DEL", -2},
+                                      {CommandType::kExpire, "EXPIRE", 3},
+                                      {CommandType::kTtl, "TTL", 2}});
 
 }  // namespace tinycache
 #endif
