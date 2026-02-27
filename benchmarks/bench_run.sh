@@ -19,7 +19,7 @@ PERF_EVENTS_DEFAULT="cycles,instructions,task-clock,context-switches,cpu-migrati
 
 usage() {
 	cat <<'EOF'
-Usage: bench_run.sh --mode <read_heavy|balanced|write_heavy> [options]
+Usage: bench_run.sh --mode <read_heavy|balanced|write_heavy|resp> [options]
 
 Options:
   --mode <name>    Benchmark mode (read_heavy, balanced, write_heavy)
@@ -140,13 +140,19 @@ if [[ -z "$MODE" ]]; then
 fi
 
 case "$MODE" in
-read_heavy | balanced | write_heavy) ;;
+read_heavy | balanced | write_heavy | resp) ;;
 *)
 	echo "ERROR: Unknown mode: $MODE" >&2
 	usage
 	exit 1
 	;;
 esac
+
+if [[ "$MODE" == "resp" && ("$SUITE" == "redis" || "$SUITE" == "all") ]]; then
+	echo "ERROR: RESP mode only supports gbench suite" >&2
+	usage
+	exit 1
+fi
 
 case "$SUITE" in
 redis | gbench | all) ;;

@@ -25,6 +25,7 @@ Other options:
 ./build/benchmarks/tinycache_bench_read_heavy
 ./build/benchmarks/tinycache_bench_balanced
 ./build/benchmarks/tinycache_bench_write_heavy
+./build/benchmarks/tinycache_bench_resp
 ```
 
 Useful flags:
@@ -63,6 +64,8 @@ Unified Python CLI (run + compare):
 ```bash
 ./benchmarks/bench_cli.py run --mode balanced --out bench/balanced_01 --suite all --perf --perf-format text
 ./benchmarks/bench_cli.py run --mode balanced --out bench/balanced_02 --suite all --perf --perf-format text
+
+./benchmarks/bench_cli.py run --mode resp --out bench/resp_01 --suite gbench --perf --perf-format text
 
 ./benchmarks/bench_cli.py compare --left bench/balanced_01 --right bench/balanced_02
 ```

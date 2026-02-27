@@ -37,6 +37,14 @@ MODE_CONFIG = {
         "default_warmup": 5000,
         "label": "Read-heavy",
     },
+    "resp": {
+        "get_pct": 0,
+        "set_pct": 0,
+        "del_pct": 0,
+        "default_requests": 0,
+        "default_warmup": 0,
+        "label": "RESP",
+    },
     "balanced": {
         "get_pct": 40,
         "set_pct": 40,
@@ -651,6 +659,13 @@ def write_metadata(out_dir, args, redis_out, gbench_out, perf_outs, context):
 
 def main():
     args = parse_args()
+
+    if args.mode == "resp" and args.suite in ("redis", "all"):
+        print(
+            "ERROR: RESP mode only supports gbench suite. Use --suite gbench.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     if args.command == "compare":
         text = compare_runs(args.left, args.right, args.format)
