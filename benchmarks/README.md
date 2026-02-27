@@ -43,9 +43,48 @@ Start server:
 Run workload scripts (bash):
 ```bash
 chmod +x benchmarks/redis_bench_*.sh
-PORT=8080 CLIENTS=32 REQUESTS=20000 ./benchmarks/redis_bench_read_heavy.sh
-PORT=8080 CLIENTS=32 REQUESTS=20000 ./benchmarks/redis_bench_balanced.sh
-PORT=8080 CLIENTS=32 REQUESTS=20000 ./benchmarks/redis_bench_write_heavy.sh
+PORT=8080 CLIENTS=32 REQUESTS=20000 ./benchmarks/redis_bench.sh --mode read_heavy --out bench/read_heavy
+
+PORT=8080 CLIENTS=32 REQUESTS=20000 ./benchmarks/redis_bench.sh --mode write_heavy --out bench/write_heavy
+
+PORT=8080 CLIENTS=32 REQUESTS=20000 ./benchmarks/redis_bench.sh --mode balanced --out bench/balanced
+
+PORT=8080 CLIENTS=32 REQUESTS=20000 ./benchmarks/redis_bench.sh --mode balanced --out bench/balanced --perf
+
+PORT=8080 CLIENTS=32 REQUESTS=20000 ./benchmarks/redis_bench.sh --mode balanced --out bench/balanced --perf --perf-format text
+
+PORT=8080 CLIENTS=32 REQUESTS=20000 ./benchmarks/redis_bench.sh --mode balanced --out bench/balanced --perf --perf-format csv --perf-delim ';'
+
+PORT=8080 CLIENTS=32 REQUESTS=20000 ./benchmarks/redis_bench.sh --mode balanced --out bench/balanced --perf \
+  --perf-events "cycles,instructions,task-clock,cache-misses" --perf-args "-r 5"
+```
+
+Unified Python CLI (run + compare):
+```bash
+./benchmarks/bench_cli.py run --mode balanced --out bench/balanced_01 --suite all --perf --perf-format text
+./benchmarks/bench_cli.py run --mode balanced --out bench/balanced_02 --suite all --perf --perf-format text
+
+./benchmarks/bench_cli.py compare --left bench/balanced_01 --right bench/balanced_02
+```
+
+Notes:
+- CLI defaults to port 8080 (TinyCache default). Override with `--port` or `PORT=...` when needed.
+- It's better to compare runs with the same mode and similar parameters (clients, requests) to isolate performance changes.
+
+Unified runner (saves redis-benchmark CSV and Google Benchmark JSON):
+```bash
+./benchmarks/bench_run.sh --mode read_heavy --out bench/read_heavy --suite all
+./benchmarks/bench_run.sh --mode read_heavy --out bench/read_heavy --suite all --perf
+./benchmarks/bench_run.sh --mode read_heavy --out bench/read_heavy --suite all --perf --perf-format text
+./benchmarks/bench_run.sh --mode read_heavy --out bench/read_heavy --suite all --perf --perf-format csv --perf-delim ';'
+./benchmarks/bench_run.sh --mode read_heavy --out bench/read_heavy --suite all --perf \
+  --perf-events "cycles,instructions,task-clock,cache-misses" --perf-args "-r 5"
+```
+
+Run only one suite:
+```bash
+./benchmarks/bench_run.sh --mode read_heavy --out bench/read_heavy --suite gbench
+./benchmarks/bench_run.sh --mode read_heavy --out bench/read_heavy --suite redis
 ```
 
 Notes:
