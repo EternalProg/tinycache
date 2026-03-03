@@ -26,6 +26,7 @@ Other options:
 ./build/benchmarks/tinycache_bench_balanced
 ./build/benchmarks/tinycache_bench_write_heavy
 ./build/benchmarks/tinycache_bench_resp
+./build/benchmarks/tinycache_bench_lru_mt
 ```
 
 Useful flags:
@@ -67,8 +68,15 @@ Unified Python CLI (run + compare):
 
 ./benchmarks/bench_cli.py run --mode resp --out bench/resp_01 --suite gbench --perf --perf-format text
 
+./benchmarks/bench_cli.py run --mode lru_mt --out bench/lru_mt_01 --suite gbench
+./benchmarks/bench_cli.py run --mode lru_mt --out bench/lru_mt_02 --suite gbench
+
 ./benchmarks/bench_cli.py compare --left bench/balanced_01 --right bench/balanced_02
+./benchmarks/bench_cli.py compare --left bench/lru_mt_01 --right bench/lru_mt_02
 ```
+
+Notes:
+- `bench_cli.py run` writes mode-suffixed outputs so you can store multiple modes in the same `--out` directory (e.g. `gbench_read_heavy.json`, `gbench_lru_mt.json`, `perf_gbench_read_heavy.csv`, ...).
 
 Notes:
 - CLI defaults to port 8080 (TinyCache default). Override with `--port` or `PORT=...` when needed.
@@ -88,6 +96,8 @@ Run only one suite:
 ```bash
 ./benchmarks/bench_run.sh --mode read_heavy --out bench/read_heavy --suite gbench
 ./benchmarks/bench_run.sh --mode read_heavy --out bench/read_heavy --suite redis
+
+./benchmarks/bench_run.sh --mode lru_mt --out bench/lru_mt --suite gbench
 ```
 
 Notes:

@@ -61,6 +61,14 @@ MODE_CONFIG = {
         "default_warmup": 0,
         "label": "Write-heavy",
     },
+    "lru_mt": {
+        "get_pct": 0,
+        "set_pct": 0,
+        "del_pct": 0,
+        "default_requests": 0,
+        "default_warmup": 0,
+        "label": "LruCache MT",
+    },
 }
 
 PERF_TEXT_UNITS = {
@@ -425,6 +433,123 @@ def parse_redis_csv(path):
     return results
 
 
+def find_one_by_glob(dir_path, patterns, preferred=None):
+    if preferred:
+        p = dir_path / preferred
+        if p.exists():
+            return p
+    matches = []
+    for pat in patterns:
+        matches.extend(list(dir_path.glob(pat)))
+    matches = sorted({m for m in matches if m.is_file()})
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def find_gbench_file(dir_path):
+    return find_one_by_glob(
+        dir_path,
+        patterns=["gbench*.json", "gbench*.csv"],
+        preferred="gbench.json",
+    )
+
+
+def gbench_time_to_ns(value, unit):
+    unit = (unit or "ns").strip()
+    scale = {
+        "ns": 1.0,
+        "us": 1_000.0,
+        "usec": 1_000.0,
+        "ms": 1_000_000.0,
+        "sec": 1_000_000_000.0,
+        "s": 1_000_000_000.0,
+    }.get(unit)
+    if scale is None:
+        return None
+    try:
+        return float(value) * scale
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_gbench_json(path):
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    results = {}
+    for entry in payload.get("benchmarks", []):
+        name = entry.get("name")
+        if not name:
+            continue
+        if entry.get("run_type") and entry.get("run_type") != "iteration":
+            continue
+        time_unit = entry.get("time_unit", "ns")
+        metrics = {}
+        if "real_time" in entry:
+            ns = gbench_time_to_ns(entry.get("real_time"), time_unit)
+            if ns is not None:
+                metrics["real_time_ns"] = ns
+        if "cpu_time" in entry:
+            ns = gbench_time_to_ns(entry.get("cpu_time"), time_unit)
+            if ns is not None:
+                metrics["cpu_time_ns"] = ns
+        if "items_per_second" in entry:
+            metrics["items_per_second"] = parse_number(str(entry.get("items_per_second")))
+        counters = entry.get("counters")
+        if isinstance(counters, dict):
+            for k, v in counters.items():
+                if isinstance(v, (int, float)):
+                    metrics[k] = float(v)
+        if metrics:
+            results[name] = metrics
+    return results
+
+
+def parse_gbench_csv(path):
+    results = {}
+    with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            name = row.get("name")
+            if not name or name.lower() == "name":
+                continue
+            unit = row.get("time_unit", "ns")
+            metrics = {}
+            if row.get("real_time"):
+                ns = gbench_time_to_ns(parse_number(row.get("real_time")), unit)
+                if ns is not None:
+                    metrics["real_time_ns"] = ns
+            if row.get("cpu_time"):
+                ns = gbench_time_to_ns(parse_number(row.get("cpu_time")), unit)
+                if ns is not None:
+                    metrics["cpu_time_ns"] = ns
+            if row.get("items_per_second"):
+                metrics["items_per_second"] = parse_number(row.get("items_per_second"))
+            for k, v in row.items():
+                if k in (
+                    "name",
+                    "iterations",
+                    "real_time",
+                    "cpu_time",
+                    "time_unit",
+                    "threads",
+                    "items_per_second",
+                    "bytes_per_second",
+                ):
+                    continue
+                parsed = parse_number(v)
+                if parsed is not None:
+                    metrics[k] = parsed
+            if metrics:
+                results[name] = metrics
+    return results
+
+
+def parse_gbench(path):
+    if path.suffix == ".csv":
+        return parse_gbench_csv(path)
+    return parse_gbench_json(path)
+
+
 def format_number(value):
     if value is None:
         return "-"
@@ -500,12 +625,25 @@ def compare_runs(left_dir, right_dir, fmt):
     right = Path(right_dir)
 
     redis_section = None
-    redis_left = left / "redis_bench.csv"
-    redis_right = right / "redis_bench.csv"
-    if redis_left.exists() and redis_right.exists():
-        left_data = parse_redis_csv(redis_left)
-        right_data = parse_redis_csv(redis_right)
-        rows = []
+    redis_left_files = list_files_by_suffix(left, "redis_bench", [".csv"])
+    redis_right_files = list_files_by_suffix(right, "redis_bench", [".csv"])
+    redis_rows = []
+    redis_missing = []
+    for suffix in sorted(set(redis_left_files.keys()) | set(redis_right_files.keys())):
+        lpath = redis_left_files.get(suffix)
+        rpath = redis_right_files.get(suffix)
+        mode = suffix_to_mode(suffix)
+        if not lpath or not rpath:
+            redis_missing.append(
+                {
+                    "mode": mode,
+                    "left": str(lpath) if lpath else None,
+                    "right": str(rpath) if rpath else None,
+                }
+            )
+            continue
+        left_data = parse_redis_csv(lpath)
+        right_data = parse_redis_csv(rpath)
         tests = sorted(set(left_data.keys()) | set(right_data.keys()))
         for test in tests:
             left_metrics = left_data.get(test, {})
@@ -516,24 +654,31 @@ def compare_runs(left_dir, right_dir, fmt):
                 delta = None
                 if lval is not None and rval is not None:
                     delta = rval - lval
-                rows.append(
+                redis_rows.append(
                     {
+                        "mode": mode,
                         "test": test,
                         "metric": metric,
                         "left": lval,
                         "right": rval,
                         "delta": delta,
-                "delta_pct": calc_delta_pct(lval, rval),
-            }
-        )
-        redis_section = {"rows": rows}
+                        "delta_pct": calc_delta_pct(lval, rval),
+                    }
+                )
+    if redis_rows:
+        redis_section = {"rows": redis_rows, "missing": redis_missing}
     else:
-        missing = []
-        if not redis_left.exists():
-            missing.append(str(redis_left))
-        if not redis_right.exists():
-            missing.append(str(redis_right))
-        redis_section = {"missing": missing}
+        redis_section = {
+            "missing": redis_missing
+            if redis_missing
+            else [
+                {
+                    "mode": "*",
+                    "left": f"{left}/redis_bench*.csv",
+                    "right": f"{right}/redis_bench*.csv",
+                }
+            ]
+        }
 
     perf_sections = {}
     perf_pairs = [
@@ -541,22 +686,110 @@ def compare_runs(left_dir, right_dir, fmt):
         ("perf_gbench", "Perf (gbench)"),
     ]
     for stem, label in perf_pairs:
-        left_perf = find_perf_file(left, stem)
-        right_perf = find_perf_file(right, stem)
-        if left_perf and right_perf:
-            left_metrics = parse_perf(left_perf)
-            right_metrics = parse_perf(right_perf)
-            rows = []
+        left_perf_files = list_files_by_suffix(left, stem, [".csv", ".txt"])
+        right_perf_files = list_files_by_suffix(right, stem, [".csv", ".txt"])
+        rows = []
+        missing = []
+        for suffix in sorted(set(left_perf_files.keys()) | set(right_perf_files.keys())):
+            lpath = left_perf_files.get(suffix)
+            rpath = right_perf_files.get(suffix)
+            mode = suffix_to_mode(suffix)
+            if not lpath or not rpath:
+                missing.append(
+                    {
+                        "mode": mode,
+                        "left": str(lpath) if lpath else None,
+                        "right": str(rpath) if rpath else None,
+                    }
+                )
+                continue
+            left_metrics = parse_perf(lpath)
+            right_metrics = parse_perf(rpath)
             for row in compare_metrics(left_metrics, right_metrics):
+                row = dict(row)
+                row["mode"] = mode
                 rows.append(row)
-            perf_sections[stem] = {"label": label, "rows": rows}
+        if rows:
+            perf_sections[stem] = {"label": label, "rows": rows, "missing": missing}
         else:
-            missing = []
-            if not left_perf:
-                missing.append(f"{left}/{stem}.[csv|txt]")
-            if not right_perf:
-                missing.append(f"{right}/{stem}.[csv|txt]")
-            perf_sections[stem] = {"label": label, "missing": missing}
+            perf_sections[stem] = {
+                "label": label,
+                "missing": missing
+                if missing
+                else [
+                    {
+                        "mode": "*",
+                        "left": f"{left}/{stem}*.[csv|txt]",
+                        "right": f"{right}/{stem}*.[csv|txt]",
+                    }
+                ],
+            }
+
+    gbench_section = None
+    left_gbench_files = list_files_by_suffix(left, "gbench", [".json", ".csv"])
+    right_gbench_files = list_files_by_suffix(right, "gbench", [".json", ".csv"])
+    gbench_rows = []
+    gbench_missing = []
+    skip_metrics = {"iterations", "repetitions", "threads"}
+    for suffix in sorted(set(left_gbench_files.keys()) | set(right_gbench_files.keys())):
+        lpath = left_gbench_files.get(suffix)
+        rpath = right_gbench_files.get(suffix)
+        mode = suffix_to_mode(suffix)
+        if not lpath or not rpath:
+            gbench_missing.append(
+                {
+                    "mode": mode,
+                    "left": str(lpath) if lpath else None,
+                    "right": str(rpath) if rpath else None,
+                }
+            )
+            continue
+        left_data = parse_gbench(lpath)
+        right_data = parse_gbench(rpath)
+        bench_names = sorted(set(left_data.keys()) | set(right_data.keys()))
+        for bname in bench_names:
+            lmetrics = left_data.get(bname, {})
+            rmetrics = right_data.get(bname, {})
+            metric_names = sorted(set(lmetrics.keys()) | set(rmetrics.keys()))
+            for metric in metric_names:
+                if metric in skip_metrics:
+                    continue
+                lval = lmetrics.get(metric)
+                rval = rmetrics.get(metric)
+                unit = ""
+                if metric.endswith("_ns"):
+                    unit = "ns"
+                elif metric == "items_per_second":
+                    unit = "items/s"
+                delta = None
+                if lval is not None and rval is not None:
+                    delta = rval - lval
+                gbench_rows.append(
+                    {
+                        "mode": mode,
+                        "benchmark": bname,
+                        "metric": metric,
+                        "unit": unit,
+                        "left": lval,
+                        "right": rval,
+                        "delta": delta,
+                        "delta_pct": calc_delta_pct(lval, rval),
+                    }
+                )
+    if gbench_rows:
+        gbench_section = {"rows": gbench_rows, "missing": gbench_missing}
+    else:
+        gbench_section = {
+            "missing": gbench_missing
+            if gbench_missing
+            else [
+                {
+                    "mode": "*",
+                    "left": f"{left}/gbench*.[json|csv]",
+                    "right": f"{right}/gbench*.[json|csv]",
+                }
+            ]
+        }
 
     if fmt == "json":
         payload = {
@@ -564,6 +797,7 @@ def compare_runs(left_dir, right_dir, fmt):
             "right": str(right),
             "redis": redis_section,
             "perf": perf_sections,
+            "gbench": gbench_section,
         }
         return json.dumps(payload, indent=2)
 
@@ -574,6 +808,7 @@ def compare_runs(left_dir, right_dir, fmt):
         for row in redis_section["rows"]:
             rows.append(
                 {
+                    "mode": row.get("mode", ""),
                     "test": row["test"],
                     "metric": row["metric"],
                     "left": format_number(row["left"]),
@@ -585,11 +820,12 @@ def compare_runs(left_dir, right_dir, fmt):
         output.append(
             table_from_rows(
                 rows,
-                ["test", "metric", "left", "right", "delta", "delta_pct"],
+                ["mode", "test", "metric", "left", "right", "delta", "delta_pct"],
             )
         )
     else:
-        output.append("Missing redis_bench.csv: " + ", ".join(redis_section["missing"]))
+        missing = redis_section.get("missing", [])
+        output.append("Missing redis outputs: " + ", ".join(str(m) for m in missing))
 
     for stem, section in perf_sections.items():
         output.append(section["label"])
@@ -598,6 +834,7 @@ def compare_runs(left_dir, right_dir, fmt):
             for row in section["rows"]:
                 rows.append(
                     {
+                        "mode": row.get("mode", ""),
                         "metric": row["metric"],
                         "unit": row["unit"],
                         "left": format_number(row["left"]),
@@ -609,11 +846,51 @@ def compare_runs(left_dir, right_dir, fmt):
             output.append(
                 table_from_rows(
                     rows,
-                    ["metric", "unit", "left", "right", "delta", "delta_pct"],
+                    ["mode", "metric", "unit", "left", "right", "delta", "delta_pct"],
                 )
             )
         else:
-            output.append("Missing perf output: " + ", ".join(section["missing"]))
+            output.append(
+                "Missing perf outputs: "
+                + ", ".join(str(m) for m in section.get("missing", []))
+            )
+
+    output.append("Google Benchmark")
+    if "rows" in gbench_section:
+        rows = []
+        for row in gbench_section["rows"]:
+            rows.append(
+                {
+                    "mode": row.get("mode", ""),
+                    "benchmark": row["benchmark"],
+                    "metric": row["metric"],
+                    "unit": row["unit"],
+                    "left": format_number(row["left"]),
+                    "right": format_number(row["right"]),
+                    "delta": format_number(row["delta"]),
+                    "delta_pct": format_delta_pct(row["delta_pct"]),
+                }
+            )
+        output.append(
+            table_from_rows(
+                rows,
+                [
+                    "mode",
+                    "benchmark",
+                    "metric",
+                    "unit",
+                    "left",
+                    "right",
+                    "delta",
+                    "delta_pct",
+                ],
+            )
+        )
+    else:
+        output.append(
+            "Missing gbench outputs: "
+            + ", ".join(str(m) for m in gbench_section.get("missing", []))
+        )
 
     return "\n\n".join(output)
 
@@ -625,7 +902,35 @@ def find_perf_file(dir_path, stem):
         return csv_path
     if txt_path.exists():
         return txt_path
+    matches = list(dir_path.glob(f"{stem}*.csv")) + list(dir_path.glob(f"{stem}*.txt"))
+    matches = sorted({m for m in matches if m.is_file()})
+    if len(matches) == 1:
+        return matches[0]
     return None
+
+
+def list_files_by_suffix(dir_path, prefix, exts):
+    files = {}
+    for ext in exts:
+        for p in sorted(dir_path.glob(f"{prefix}*{ext}")):
+            if not p.is_file():
+                continue
+            stem = p.stem
+            if not stem.startswith(prefix):
+                continue
+            suffix = stem[len(prefix) :]
+            # Prefer earlier extensions in `exts` (callers should order by priority).
+            if suffix not in files:
+                files[suffix] = p
+    return files
+
+
+def suffix_to_mode(suffix):
+    if not suffix:
+        return "default"
+    if suffix.startswith("_"):
+        return suffix[1:]
+    return suffix
 
 
 def write_metadata(out_dir, args, redis_out, gbench_out, perf_outs, context):
@@ -653,27 +958,30 @@ def write_metadata(out_dir, args, redis_out, gbench_out, perf_outs, context):
         },
     }
     meta.update({"git": git_info()})
-    meta_path = Path(out_dir) / "bench_run.json"
+    meta_path = Path(out_dir) / f"bench_run_{args.mode}.json"
     meta_path.write_text(json.dumps(meta, indent=2))
 
 
 def main():
     args = parse_args()
 
-    if args.mode == "resp" and args.suite in ("redis", "all"):
-        print(
-            "ERROR: RESP mode only supports gbench suite. Use --suite gbench.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
     if args.command == "compare":
         text = compare_runs(args.left, args.right, args.format)
         emit_output(text, args.out)
         return
 
+    if args.mode in ("resp", "lru_mt") and args.suite in ("redis", "all"):
+        print(
+            f"NOTE: Mode '{args.mode}' does not support redis; forcing --suite gbench",
+            file=sys.stderr,
+        )
+        args.suite = "gbench"
+
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Avoid overwriting when storing multiple modes in the same directory.
+    name_suffix = f"_{args.mode}"
 
     host = args.host or resolve_env_str("HOST", "127.0.0.1")
     port = args.port or resolve_env_int("PORT", DEFAULT_PORT)
@@ -697,13 +1005,15 @@ def main():
     if args.gbench_args:
         gbench_args.extend(shlex.split(args.gbench_args))
 
-    redis_csv = out_dir / "redis_bench.csv"
-    gbench_out = out_dir / f"gbench.{args.gbench_format}"
+    redis_csv = out_dir / f"redis_bench{name_suffix}.csv"
+    gbench_out = out_dir / f"gbench{name_suffix}.{args.gbench_format}"
     perf_redis_out = (
-        out_dir / f"perf_redis_bench.{ 'txt' if args.perf_format == 'text' else 'csv' }"
+        out_dir
+        / f"perf_redis_bench{name_suffix}.{ 'txt' if args.perf_format == 'text' else 'csv' }"
     )
     perf_gbench_out = (
-        out_dir / f"perf_gbench.{ 'txt' if args.perf_format == 'text' else 'csv' }"
+        out_dir
+        / f"perf_gbench{name_suffix}.{ 'txt' if args.perf_format == 'text' else 'csv' }"
     )
 
     perf_outputs = {}
