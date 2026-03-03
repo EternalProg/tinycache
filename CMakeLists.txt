@@ -29,10 +29,19 @@ target_include_directories(${TINYCACHE_LIB} PRIVATE ${Boost_INCLUDE_DIRS})
 # SPDLOG configuration
 find_package(spdlog REQUIRED)
 
+include(FetchContent)
+FetchContent_Declare(
+    tomlplusplus
+    GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
+    GIT_TAG        v3.4.0
+)
+FetchContent_MakeAvailable(tomlplusplus)
+
 target_link_libraries(${TINYCACHE_LIB} PRIVATE
   Boost::system
   spdlog::spdlog_header_only
   tinycache_flags
+  tomlplusplus::tomlplusplus
 )
 
 set(MAIN_FILE src/main.cpp)
@@ -41,7 +50,6 @@ add_executable(${PROJECT_NAME} ${MAIN_FILE})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${TINYCACHE_LIB} tinycache_flags)
 
 # Testing and Benchmarking configuration
-include(FetchContent)
 
 # GTest configuration
 FetchContent_Declare(
@@ -68,5 +76,3 @@ option(ENABLE_BENCHMARKS "Build Google Benchmark benchmarks" OFF)
 if(ENABLE_BENCHMARKS)
   add_subdirectory(benchmarks)
 endif()
-
-
