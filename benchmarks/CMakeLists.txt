@@ -19,6 +19,10 @@ add_executable(tinycache_bench_resp
   bench_resp.cpp
 )
 
+add_executable(tinycache_bench_lru_mt
+  bench_lru_mt.cpp
+)
+
 # Link dependencies
 target_link_libraries(tinycache_bench_read_heavy PRIVATE
   ${TINYCACHE_LIB}
@@ -44,11 +48,18 @@ target_link_libraries(tinycache_bench_resp PRIVATE
   tinycache_flags
 )
 
+target_link_libraries(tinycache_bench_lru_mt PRIVATE
+  ${TINYCACHE_LIB}
+  benchmark::benchmark
+  tinycache_flags
+)
+
 # Ensure we build in Release mode for accurate benchmarks
 target_compile_options(tinycache_bench_read_heavy PRIVATE -O3)
 target_compile_options(tinycache_bench_balanced PRIVATE -O3)
 target_compile_options(tinycache_bench_write_heavy PRIVATE -O3)
 target_compile_options(tinycache_bench_resp PRIVATE -O3)
+target_compile_options(tinycache_bench_lru_mt PRIVATE -O3)
 
 # Add custom target to run benchmarks easily
 add_custom_target(run_benchmarks

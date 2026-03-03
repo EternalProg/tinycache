@@ -19,10 +19,10 @@ PERF_EVENTS_DEFAULT="cycles,instructions,task-clock,context-switches,cpu-migrati
 
 usage() {
 	cat <<'EOF'
-Usage: bench_run.sh --mode <read_heavy|balanced|write_heavy|resp> [options]
+Usage: bench_run.sh --mode <read_heavy|balanced|write_heavy|resp|lru_mt> [options]
 
 Options:
-  --mode <name>    Benchmark mode (read_heavy, balanced, write_heavy)
+  --mode <name>    Benchmark mode (read_heavy, balanced, write_heavy, resp, lru_mt)
   --suite <name>   Benchmark suite (redis, gbench, all)
   --out <dir>      Output directory (if --label set, used as base)
   --label <name>   Run label (appended to --out base)
@@ -140,7 +140,7 @@ if [[ -z "$MODE" ]]; then
 fi
 
 case "$MODE" in
-read_heavy | balanced | write_heavy | resp) ;;
+read_heavy | balanced | write_heavy | resp | lru_mt) ;;
 *)
 	echo "ERROR: Unknown mode: $MODE" >&2
 	usage
@@ -148,10 +148,16 @@ read_heavy | balanced | write_heavy | resp) ;;
 	;;
 esac
 
-if [[ "$MODE" == "resp" && ("$SUITE" == "redis" || "$SUITE" == "all") ]]; then
-	echo "ERROR: RESP mode only supports gbench suite" >&2
-	usage
-	exit 1
+if [[ "$MODE" == "resp" || "$MODE" == "lru_mt" ]]; then
+	if [[ "$SUITE" == "redis" ]]; then
+		echo "ERROR: Mode '$MODE' only supports gbench suite" >&2
+		usage
+		exit 1
+	fi
+	if [[ "$SUITE" == "all" ]]; then
+		echo "NOTE: Mode '$MODE' does not support redis; forcing --suite gbench" >&2
+		SUITE="gbench"
+	fi
 fi
 
 case "$SUITE" in
