@@ -22,11 +22,6 @@ struct Entry {
   std::multimap<TimePoint, Key>::iterator expire_it;
 };
 
-// struct ExpireItem {
-//   Key key;
-//   TimePoint expire_time;
-// };
-
 class LruCache {
  public:
   static constexpr std::size_t kDefaultCapacity = 1024;

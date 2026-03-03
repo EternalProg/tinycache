@@ -5,14 +5,22 @@
 #include <server.hpp>
 #include <session.hpp>
 #include "expirationController.hpp"
+#include "lruCache.hpp"
 #include "utils.hpp"
 
 namespace tinycache {
 
-Server::Server(std::uint16_t port)
-    : expiration_controller_(cache_),
-      acceptor_(io_context_, {boost::asio::ip::tcp::v4(), port}),
+Server::Server(Config& config)
+    : cache_(config.max_items),
+      expiration_controller_(cache_),
+      acceptor_(io_context_),
       signals_(io_context_, SIGINT, SIGTERM) {
+  auto addr = asio::ip::make_address(config.host);  // e.g. "0.0.0.0"
+  boost::asio::ip::tcp::endpoint ep(addr, config.port);
+  acceptor_.open(ep.protocol());
+  acceptor_.set_option(asio::socket_base::reuse_address(true));
+  acceptor_.bind(ep);
+
   signals_.async_wait([&](auto, auto) {
     spdlog::info("Server is closing");
     io_context_.stop();

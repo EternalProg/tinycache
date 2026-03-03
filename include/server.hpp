@@ -4,7 +4,7 @@
 #include <boost/asio.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
-#include <cstdint>
+#include <config.hpp>
 #include "expirationController.hpp"
 #include "lruCache.hpp"
 
@@ -13,7 +13,7 @@ namespace asio = boost::asio;
 namespace tinycache {
 class Server {
  public:
-  explicit Server(std::uint16_t port);
+  explicit Server(Config& config);
   void run();
 
  private:

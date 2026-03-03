@@ -4,7 +4,9 @@
 int main() {
   spdlog::set_level(spdlog::level::debug);
 
-  tinycache::Server server(8080);
+  auto config = tinycache::get_config();
+
+  tinycache::Server server(config);
 
   server.run();
 }
