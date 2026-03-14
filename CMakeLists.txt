@@ -24,10 +24,18 @@ target_include_directories(${TINYCACHE_LIB} PUBLIC
 
 # Boost configuration
 find_package(Boost CONFIG REQUIRED COMPONENTS system)
-target_include_directories(${TINYCACHE_LIB} PRIVATE ${Boost_INCLUDE_DIRS})
 
 # SPDLOG configuration
 find_package(spdlog REQUIRED)
+
+# XXHASH configuration
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(XXHASH REQUIRED libxxhash)
+
+target_include_directories(${TINYCACHE_LIB} PRIVATE
+  ${Boost_INCLUDE_DIRS}
+  ${XXHASH_INCLUDE_DIRS}
+)
 
 include(FetchContent)
 FetchContent_Declare(
@@ -42,6 +50,7 @@ target_link_libraries(${TINYCACHE_LIB} PRIVATE
   spdlog::spdlog_header_only
   tinycache_flags
   tomlplusplus::tomlplusplus
+  ${XXHASH_LIBRARIES}
 )
 
 set(MAIN_FILE src/main.cpp)
