@@ -6,7 +6,7 @@
 #include <memory>
 #include <mutex>
 
-using tinycache::LruCache;
+using tinycache::LruShard;
 using tinycache::bench::Operation;
 using tinycache::bench::WorkloadConfig;
 using tinycache::bench::WorkloadCounters;
@@ -45,7 +45,7 @@ class ReusableBarrier {
 
 struct SharedRunState {
   ReusableBarrier barrier;
-  std::unique_ptr<LruCache> cache;
+  std::unique_ptr<LruShard> cache;
   std::vector<std::string> keys;
   std::vector<std::string> values;
 };
@@ -68,8 +68,7 @@ WorkloadConfig cfg_small(const WorkloadMix& mix, bool zipf, double zipf_s) {
   return WorkloadConfig{/*cache_capacity=*/4096,
                         /*working_set=*/2048,
                         /*prefill=*/2048,
-                        /*value_size=*/256,
-                        mix,
+                        /*value_size=*/256,      mix,
                         /*use_zipf=*/zipf,
                         /*zipf_s=*/zipf_s};
 }
@@ -78,8 +77,7 @@ WorkloadConfig cfg_pressure(const WorkloadMix& mix, bool zipf, double zipf_s) {
   return WorkloadConfig{/*cache_capacity=*/4096,
                         /*working_set=*/12288,
                         /*prefill=*/4096,
-                        /*value_size=*/256,
-                        mix,
+                        /*value_size=*/256,      mix,
                         /*use_zipf=*/zipf,
                         /*zipf_s=*/zipf_s};
 }
@@ -89,7 +87,7 @@ void run_workload_mt(benchmark::State& state, const WorkloadConfig& config,
   // Phase 1: synchronize start and build shared state once.
   g_shared.barrier.wait(state.threads());
   if (state.thread_index() == 0) {
-    g_shared.cache = std::make_unique<LruCache>(config.cache_capacity);
+    g_shared.cache = std::make_unique<LruShard>(config.cache_capacity);
     g_shared.keys = tinycache::bench::build_keys(config.working_set);
     g_shared.values =
         tinycache::bench::build_values(config.working_set, config.value_size);

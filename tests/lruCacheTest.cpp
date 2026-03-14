@@ -1,16 +1,16 @@
 #include <gtest/gtest.h>
 #include <chrono>
-#include <lruCache.hpp>
+#include <lruShard.hpp>
 
-using tinycache::LruCache;
+using tinycache::LruShard;
 
-class LruCacheTest : public ::testing::Test {
+class LruShardTest : public ::testing::Test {
  protected:
-  LruCache cache_{100};  // Small capacity for testing eviction
+  LruShard cache_{100};  // Small capacity for testing eviction
 };
 
 // Basic Get/Set tests
-TEST_F(LruCacheTest, SetAndGetReturnsValue) {
+TEST_F(LruShardTest, SetAndGetReturnsValue) {
   cache_.set("key1", "value1");
   auto result = cache_.get("key1");
 
@@ -18,12 +18,12 @@ TEST_F(LruCacheTest, SetAndGetReturnsValue) {
   EXPECT_EQ(result.value(), "value1");
 }
 
-TEST_F(LruCacheTest, GetNonExistentKeyReturnsNullopt) {
+TEST_F(LruShardTest, GetNonExistentKeyReturnsNullopt) {
   auto result = cache_.get("nonexistent");
   EXPECT_FALSE(result.has_value());
 }
 
-TEST_F(LruCacheTest, SetMultipleKeysAndGet) {
+TEST_F(LruShardTest, SetMultipleKeysAndGet) {
   cache_.set("key1", "value1");
   cache_.set("key2", "value2");
   cache_.set("key3", "value3");
@@ -33,7 +33,7 @@ TEST_F(LruCacheTest, SetMultipleKeysAndGet) {
   EXPECT_EQ(cache_.get("key3").value(), "value3");
 }
 
-TEST_F(LruCacheTest, OverwriteExistingKey) {
+TEST_F(LruShardTest, OverwriteExistingKey) {
   cache_.set("key1", "value1");
   cache_.set("key1", "updated_value");
 
@@ -43,7 +43,7 @@ TEST_F(LruCacheTest, OverwriteExistingKey) {
 }
 
 // Deletion tests
-TEST_F(LruCacheTest, DeleteExistingKey) {
+TEST_F(LruShardTest, DeleteExistingKey) {
   cache_.set("key1", "value1");
   bool deleted = cache_.del("key1");
 
@@ -51,12 +51,12 @@ TEST_F(LruCacheTest, DeleteExistingKey) {
   EXPECT_FALSE(cache_.get("key1").has_value());
 }
 
-TEST_F(LruCacheTest, DeleteNonExistentKeyReturnsFalse) {
+TEST_F(LruShardTest, DeleteNonExistentKeyReturnsFalse) {
   bool deleted = cache_.del("nonexistent");
   EXPECT_FALSE(deleted);
 }
 
-TEST_F(LruCacheTest, DeleteOneKeyDoesNotAffectOthers) {
+TEST_F(LruShardTest, DeleteOneKeyDoesNotAffectOthers) {
   cache_.set("key1", "value1");
   cache_.set("key2", "value2");
   cache_.set("key3", "value3");
@@ -70,8 +70,8 @@ TEST_F(LruCacheTest, DeleteOneKeyDoesNotAffectOthers) {
 }
 
 // LRU Eviction tests
-TEST_F(LruCacheTest, EvictsLeastRecentlyUsedWhenFull) {
-  LruCache small_cache{3};  // Capacity of 3
+TEST_F(LruShardTest, EvictsLeastRecentlyUsedWhenFull) {
+  LruShard small_cache{3};  // Capacity of 3
 
   small_cache.set("key1", "value1");
   small_cache.set("key2", "value2");
@@ -86,8 +86,8 @@ TEST_F(LruCacheTest, EvictsLeastRecentlyUsedWhenFull) {
   EXPECT_TRUE(small_cache.get("key4").has_value());
 }
 
-TEST_F(LruCacheTest, AccessingKeyMovesItToFront) {
-  LruCache small_cache{3};
+TEST_F(LruShardTest, AccessingKeyMovesItToFront) {
+  LruShard small_cache{3};
 
   small_cache.set("key1", "value1");
   small_cache.set("key2", "value2");
@@ -106,8 +106,8 @@ TEST_F(LruCacheTest, AccessingKeyMovesItToFront) {
   EXPECT_TRUE(small_cache.get("key4").has_value());
 }
 
-TEST_F(LruCacheTest, UpdatingKeyMovesItToFront) {
-  LruCache small_cache{3};
+TEST_F(LruShardTest, UpdatingKeyMovesItToFront) {
+  LruShard small_cache{3};
 
   small_cache.set("key1", "value1");
   small_cache.set("key2", "value2");
@@ -126,8 +126,8 @@ TEST_F(LruCacheTest, UpdatingKeyMovesItToFront) {
   EXPECT_TRUE(small_cache.get("key4").has_value());
 }
 
-TEST_F(LruCacheTest, MultipleEvictionsWithAccess) {
-  LruCache small_cache{3};
+TEST_F(LruShardTest, MultipleEvictionsWithAccess) {
+  LruShard small_cache{3};
 
   small_cache.set("key1", "value1");
   small_cache.set("key2", "value2");
@@ -148,19 +148,19 @@ TEST_F(LruCacheTest, MultipleEvictionsWithAccess) {
 }
 
 // TTL/Expiration tests
-TEST_F(LruCacheTest, ExpireAndTtlReturnNoExpirationInitially) {
+TEST_F(LruShardTest, ExpireAndTtlReturnNoExpirationInitially) {
   cache_.set("key1", "value1");
   std::int64_t ttl = cache_.ttl("key1");
 
   EXPECT_EQ(ttl, -1);  // -1 means no expiration
 }
 
-TEST_F(LruCacheTest, TtlReturnsNegativeTwoForNonExistentKey) {
+TEST_F(LruShardTest, TtlReturnsNegativeTwoForNonExistentKey) {
   std::int64_t ttl = cache_.ttl("nonexistent");
   EXPECT_EQ(ttl, -2);  // -2 means key doesn't exist
 }
 
-TEST_F(LruCacheTest, ExpireSetsTtl) {
+TEST_F(LruShardTest, ExpireSetsTtl) {
   cache_.set("key1", "value1");
   cache_.expire("key1", 10);
 
@@ -169,7 +169,7 @@ TEST_F(LruCacheTest, ExpireSetsTtl) {
   EXPECT_LE(ttl, 10);
 }
 
-TEST_F(LruCacheTest, ExpireOnNonExistentKeyDoesNothing) {
+TEST_F(LruShardTest, ExpireOnNonExistentKeyDoesNothing) {
   auto result = cache_.expire("nonexistent", 10);
   std::int64_t ttl = cache_.ttl("nonexistent");
 
@@ -177,7 +177,7 @@ TEST_F(LruCacheTest, ExpireOnNonExistentKeyDoesNothing) {
   EXPECT_EQ(ttl, -2);    // Still non-existent
 }
 
-TEST_F(LruCacheTest, ExpiredKeyReturnsNullopt) {
+TEST_F(LruShardTest, ExpiredKeyReturnsNullopt) {
   cache_.set("key1", "value1");
   cache_.expire("key1", 1);  // Expire in 1 second
 
@@ -188,7 +188,7 @@ TEST_F(LruCacheTest, ExpiredKeyReturnsNullopt) {
   EXPECT_FALSE(result.has_value());
 }
 
-TEST_F(LruCacheTest, ExpiredKeyTtlReturnsNegativeTwo) {
+TEST_F(LruShardTest, ExpiredKeyTtlReturnsNegativeTwo) {
   cache_.set("key1", "value1");
   cache_.expire("key1", 1);  // Expire in 1 second
 
@@ -199,7 +199,7 @@ TEST_F(LruCacheTest, ExpiredKeyTtlReturnsNegativeTwo) {
   EXPECT_EQ(ttl, -2);
 }
 
-TEST_F(LruCacheTest, SettingValueClearsExpiration) {
+TEST_F(LruShardTest, SettingValueClearsExpiration) {
   cache_.set("key1", "value1");
   cache_.expire("key1", 1);
 
@@ -215,7 +215,7 @@ TEST_F(LruCacheTest, SettingValueClearsExpiration) {
   EXPECT_EQ(result.value(), "updated_value");
 }
 
-TEST_F(LruCacheTest, TtlReturnsZeroOrPositiveAfterExpire) {
+TEST_F(LruShardTest, TtlReturnsZeroOrPositiveAfterExpire) {
   cache_.set("key1", "value1");
   cache_.expire("key1", 10);
 
@@ -224,7 +224,7 @@ TEST_F(LruCacheTest, TtlReturnsZeroOrPositiveAfterExpire) {
 }
 
 // Empty string and edge case tests
-TEST_F(LruCacheTest, StoresEmptyString) {
+TEST_F(LruShardTest, StoresEmptyString) {
   cache_.set("key1", "");
   auto result = cache_.get("key1");
 
@@ -232,7 +232,7 @@ TEST_F(LruCacheTest, StoresEmptyString) {
   EXPECT_EQ(result.value(), "");
 }
 
-TEST_F(LruCacheTest, StoresEmptyKey) {
+TEST_F(LruShardTest, StoresEmptyKey) {
   cache_.set("", "value1");
   auto result = cache_.get("");
 
@@ -240,7 +240,7 @@ TEST_F(LruCacheTest, StoresEmptyKey) {
   EXPECT_EQ(result.value(), "value1");
 }
 
-TEST_F(LruCacheTest, StoresLargeValues) {
+TEST_F(LruShardTest, StoresLargeValues) {
   std::string large_value(10000, 'x');
   cache_.set("key1", large_value);
 
@@ -250,7 +250,7 @@ TEST_F(LruCacheTest, StoresLargeValues) {
   EXPECT_EQ(result.value().size(), 10000);
 }
 
-TEST_F(LruCacheTest, StoresSpecialCharacters) {
+TEST_F(LruShardTest, StoresSpecialCharacters) {
   std::string special = "!@#$%^&*()_+-=[]{}|;:',.<>?/~`";
   cache_.set("key1", special);
 
@@ -260,8 +260,8 @@ TEST_F(LruCacheTest, StoresSpecialCharacters) {
 }
 
 // Default capacity tests
-TEST_F(LruCacheTest, DefaultCapacityIs1024) {
-  LruCache default_cache;
+TEST_F(LruShardTest, DefaultCapacityIs1024) {
+  LruShard default_cache;
   EXPECT_EQ(default_cache.kDefaultCapacity, 1024);
 
   // Fill cache beyond reasonable test limits (just verify it doesn't crash)
@@ -274,8 +274,8 @@ TEST_F(LruCacheTest, DefaultCapacityIs1024) {
 }
 
 // Boundary tests
-TEST_F(LruCacheTest, CapacityOfOne) {
-  LruCache tiny_cache{1};
+TEST_F(LruShardTest, CapacityOfOne) {
+  LruShard tiny_cache{1};
 
   tiny_cache.set("key1", "value1");
   EXPECT_TRUE(tiny_cache.get("key1").has_value());
@@ -285,7 +285,7 @@ TEST_F(LruCacheTest, CapacityOfOne) {
   EXPECT_TRUE(tiny_cache.get("key2").has_value());
 }
 
-TEST_F(LruCacheTest, DeleteThenReInsert) {
+TEST_F(LruShardTest, DeleteThenReInsert) {
   cache_.set("key1", "value1");
   bool deleted = cache_.del("key1");
   EXPECT_TRUE(deleted);
@@ -296,7 +296,7 @@ TEST_F(LruCacheTest, DeleteThenReInsert) {
   EXPECT_EQ(result.value(), "new_value1");
 }
 
-TEST_F(LruCacheTest, AccessAfterExpiration) {
+TEST_F(LruShardTest, AccessAfterExpiration) {
   cache_.set("key1", "value1");
   cache_.expire("key1", 1);
 
@@ -313,8 +313,8 @@ TEST_F(LruCacheTest, AccessAfterExpiration) {
 }
 
 // Mix of operations
-TEST_F(LruCacheTest, ComplexMixOfOperations) {
-  LruCache small_cache{4};
+TEST_F(LruShardTest, ComplexMixOfOperations) {
+  LruShard small_cache{4};
 
   // Set 4 items
   small_cache.set("key1", "value1");
@@ -356,7 +356,7 @@ TEST_F(LruCacheTest, ComplexMixOfOperations) {
   EXPECT_TRUE(small_cache.get("key5").has_value());
 }
 
-TEST_F(LruCacheTest, RemoveExpiredKeysRemovesOnlyExpiredEntries) {
+TEST_F(LruShardTest, RemoveExpiredKeysRemovesOnlyExpiredEntries) {
   cache_.set("short", "value1");
   cache_.set("long", "value2");
 
@@ -370,7 +370,7 @@ TEST_F(LruCacheTest, RemoveExpiredKeysRemovesOnlyExpiredEntries) {
   EXPECT_TRUE(cache_.get("long").has_value());
 }
 
-TEST_F(LruCacheTest, GetNextExpireTimeReturnsEarliestExpiration) {
+TEST_F(LruShardTest, GetNextExpireTimeReturnsEarliestExpiration) {
   cache_.set("short", "value1");
   cache_.set("long", "value2");
 
@@ -386,7 +386,7 @@ TEST_F(LruCacheTest, GetNextExpireTimeReturnsEarliestExpiration) {
   EXPECT_TRUE(cache_.get("long").has_value());
 }
 
-TEST_F(LruCacheTest, GetNextExpireTimeReturnsNulloptWhenEmpty) {
+TEST_F(LruShardTest, GetNextExpireTimeReturnsNulloptWhenEmpty) {
   auto next_expire = cache_.get_next_expire_time();
   EXPECT_FALSE(next_expire.has_value());
 }

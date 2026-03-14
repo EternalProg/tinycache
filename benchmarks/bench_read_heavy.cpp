@@ -1,6 +1,6 @@
 #include "bench_common.hpp"
 
-using tinycache::LruCache;
+using tinycache::LruShard;
 using tinycache::bench::LatencyCollector;
 using tinycache::bench::Operation;
 using tinycache::bench::WorkloadConfig;
@@ -15,7 +15,7 @@ WorkloadMix mix_read_heavy() {
 }
 
 void run_workload(benchmark::State& state, const WorkloadConfig& config) {
-  LruCache cache(config.cache_capacity);
+  LruShard cache(config.cache_capacity);
   auto keys = tinycache::bench::build_keys(config.working_set);
   auto values =
       tinycache::bench::build_values(config.working_set, config.value_size);

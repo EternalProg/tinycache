@@ -1,7 +1,7 @@
 # TinyCache Benchmarks
 
 Two layers of benchmarking:
-- Google Benchmark: microbenchmarks for in-memory LruCache
+- Google Benchmark: microbenchmarks for in-memory LruShard
 - redis-benchmark: end-to-end TCP/RESP performance
 
 ## Build

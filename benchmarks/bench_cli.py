@@ -67,7 +67,7 @@ MODE_CONFIG = {
         "del_pct": 0,
         "default_requests": 0,
         "default_warmup": 0,
-        "label": "LruCache MT",
+        "label": "LruShard MT",
     },
 }
 
@@ -279,7 +279,9 @@ def run_redis_benchmark(
 def run_gbench(mode, out_path, gbench_format, gbench_args):
     gbench_bin = ROOT_DIR / "build/benchmarks" / f"tinycache_bench_{mode}"
     if not gbench_bin.exists():
-        print(f"ERROR: Google Benchmark binary not found: {gbench_bin}", file=sys.stderr)
+        print(
+            f"ERROR: Google Benchmark binary not found: {gbench_bin}", file=sys.stderr
+        )
         print("Build with: ./build.sh bench", file=sys.stderr)
         sys.exit(1)
 
@@ -294,11 +296,7 @@ def run_gbench(mode, out_path, gbench_format, gbench_args):
 
 
 def normalize_number_text(value):
-    return (
-        value.replace("\u202f", "")
-        .replace("\u00a0", "")
-        .replace(" ", "")
-    )
+    return value.replace("\u202f", "").replace("\u00a0", "").replace(" ", "")
 
 
 def parse_number(value, decimal_comma=None):
@@ -374,7 +372,9 @@ def parse_perf_csv(path):
 
 def parse_perf_text(path):
     metrics = {}
-    line_re = re.compile(r"^\s*(?P<value>[0-9][0-9\s\u202f\u00a0\.,]*|<not supported>|<not counted>)\s+(?P<rest>.+)$")
+    line_re = re.compile(
+        r"^\s*(?P<value>[0-9][0-9\s\u202f\u00a0\.,]*|<not supported>|<not counted>)\s+(?P<rest>.+)$"
+    )
     with open(path, "r", encoding="utf-8", errors="ignore") as fh:
         for raw in fh:
             line = raw.strip()
@@ -493,7 +493,9 @@ def parse_gbench_json(path):
             if ns is not None:
                 metrics["cpu_time_ns"] = ns
         if "items_per_second" in entry:
-            metrics["items_per_second"] = parse_number(str(entry.get("items_per_second")))
+            metrics["items_per_second"] = parse_number(
+                str(entry.get("items_per_second"))
+            )
         counters = entry.get("counters")
         if isinstance(counters, dict):
             for k, v in counters.items():
@@ -690,7 +692,9 @@ def compare_runs(left_dir, right_dir, fmt):
         right_perf_files = list_files_by_suffix(right, stem, [".csv", ".txt"])
         rows = []
         missing = []
-        for suffix in sorted(set(left_perf_files.keys()) | set(right_perf_files.keys())):
+        for suffix in sorted(
+            set(left_perf_files.keys()) | set(right_perf_files.keys())
+        ):
             lpath = left_perf_files.get(suffix)
             rpath = right_perf_files.get(suffix)
             mode = suffix_to_mode(suffix)
@@ -731,7 +735,9 @@ def compare_runs(left_dir, right_dir, fmt):
     gbench_rows = []
     gbench_missing = []
     skip_metrics = {"iterations", "repetitions", "threads"}
-    for suffix in sorted(set(left_gbench_files.keys()) | set(right_gbench_files.keys())):
+    for suffix in sorted(
+        set(left_gbench_files.keys()) | set(right_gbench_files.keys())
+    ):
         lpath = left_gbench_files.get(suffix)
         rpath = right_gbench_files.get(suffix)
         mode = suffix_to_mode(suffix)
@@ -840,9 +846,9 @@ def compare_runs(left_dir, right_dir, fmt):
                         "left": format_number(row["left"]),
                         "right": format_number(row["right"]),
                         "delta": format_number(row["delta"]),
-                    "delta_pct": format_delta_pct(row["delta_pct"]),
-                }
-            )
+                        "delta_pct": format_delta_pct(row["delta_pct"]),
+                    }
+                )
             output.append(
                 table_from_rows(
                     rows,
@@ -996,7 +1002,9 @@ def main():
     if warmup is None:
         warmup = resolve_env_int("WARMUP", None)
 
-    perf_events = args.perf_events or os.environ.get("PERF_EVENTS") or PERF_EVENTS_DEFAULT
+    perf_events = (
+        args.perf_events or os.environ.get("PERF_EVENTS") or PERF_EVENTS_DEFAULT
+    )
     perf_args = shlex.split(args.perf_args) if args.perf_args else []
 
     gbench_args = []
@@ -1009,11 +1017,11 @@ def main():
     gbench_out = out_dir / f"gbench{name_suffix}.{args.gbench_format}"
     perf_redis_out = (
         out_dir
-        / f"perf_redis_bench{name_suffix}.{ 'txt' if args.perf_format == 'text' else 'csv' }"
+        / f"perf_redis_bench{name_suffix}.{'txt' if args.perf_format == 'text' else 'csv'}"
     )
     perf_gbench_out = (
         out_dir
-        / f"perf_gbench{name_suffix}.{ 'txt' if args.perf_format == 'text' else 'csv' }"
+        / f"perf_gbench{name_suffix}.{'txt' if args.perf_format == 'text' else 'csv'}"
     )
 
     perf_outputs = {}

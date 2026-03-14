@@ -7,7 +7,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <lruCache.hpp>
+#include <lruShard.hpp>
 #include <random>
 #include <string>
 #include <vector>
@@ -123,7 +123,7 @@ inline std::size_t pick_key(std::mt19937_64& rng, ZipfSampler* zipf,
   return dist(rng);
 }
 
-inline void fill_cache(tinycache::LruCache& cache,
+inline void fill_cache(tinycache::LruShard& cache,
                        const std::vector<std::string>& keys,
                        const std::vector<std::string>& values,
                        std::size_t prefill) {
