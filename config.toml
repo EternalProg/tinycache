@@ -2,6 +2,9 @@
 host = "0.0.0.0"
 port = 8080
 [cache]
-max_items = 1024              # or use max_bytes, but pick one primary metric
-default_ttl_seconds = 0       # 0 = no default TTL
-shard_count = 16              # min 1, ideally a power of 2 for efficient hashing
+max_items_per_shard = 1024
+# max items per shard, total capacity = max_items_per_shard * shard_count
+default_ttl_seconds = 0
+# 0 = no default TTL
+shard_count = 1
+# min 1
