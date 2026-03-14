@@ -7,6 +7,7 @@
 #include <boost/asio/streambuf.hpp>
 #include <commandExecutor.hpp>
 #include <memory>
+#include "shardPool.hpp"
 
 namespace asio = boost::asio;
 
@@ -15,8 +16,7 @@ enum class ReadResult { kNewMessage, kCloseConnection, kReadError };
 
 class Session : public std::enable_shared_from_this<Session> {
  public:
-  explicit Session(asio::ip::tcp::socket socket,
-                   const CommandExecutor& executor);
+  explicit Session(asio::ip::tcp::socket socket, ShardPool& shard_pool);
   asio::awaitable<void> run();
 
  private:

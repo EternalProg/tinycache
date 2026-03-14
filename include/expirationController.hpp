@@ -2,7 +2,7 @@
 #define TINYCACHE_EXPIRATION_CONTROLLER_HPP
 
 #include <boost/asio.hpp>
-#include "lruCache.hpp"
+#include "lruShard.hpp"
 
 namespace asio = boost::asio;
 
@@ -10,11 +10,11 @@ namespace tinycache {
 
 class ExpirationController {
  public:
-  explicit ExpirationController(LruCache& cache);
+  explicit ExpirationController(LruShard& cache);
   asio::awaitable<void> cleaning_loop();
 
  private:
-  LruCache& cache_;
+  LruShard& cache_;
 };
 
 }  // namespace tinycache

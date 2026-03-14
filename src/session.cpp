@@ -15,10 +15,10 @@ namespace tinycache {
 
 inline constexpr std::size_t kMaxMessageSize = 1024;
 
-Session::Session(asio::ip::tcp::socket socket, const CommandExecutor& executor)
+Session::Session(asio::ip::tcp::socket socket, ShardPool& shard_pool)
     : socket_(std::move(socket)),
       strand_(asio::make_strand(socket_.get_executor())),
-      executor_(executor) {}
+      executor_(shard_pool) {}
 
 asio::awaitable<void> Session::run() {
   for (;;) {
@@ -49,7 +49,7 @@ asio::awaitable<void> Session::run() {
       continue;
     }
 
-    auto response = executor_.execute(*command);
+    auto response = co_await executor_.execute(*command);
     co_await write(RespSerializer::serialize(response));
   }
   spdlog::debug("Session closed");

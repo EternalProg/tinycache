@@ -1,19 +1,114 @@
 #include <gtest/gtest.h>
+#include <boost/asio.hpp>
+#include <boost/asio/co_spawn.hpp>
+#include <boost/asio/use_future.hpp>
 #include <command.hpp>
 #include <commandExecutor.hpp>
-#include <lruCache.hpp>
+#include <future>
+#include <lruShard.hpp>
 #include <respValue.hpp>
+#include <shardPool.hpp>
+#include <utility>
 
 using tinycache::Command;
 using tinycache::CommandExecutor;
 using tinycache::CommandType;
-using tinycache::LruCache;
+using tinycache::LruShard;
 using tinycache::RespValue;
+using tinycache::ShardPool;
+
+namespace asio = boost::asio;
 
 class CommandExecutorTest : public ::testing::Test {
  protected:
-  LruCache cache_{100};
-  CommandExecutor executor_{cache_};
+  struct ExecutorProxy {
+    CommandExecutorTest& test;
+
+    RespValue execute(Command cmd) { return test.execute(std::move(cmd)); }
+  };
+
+  struct CacheProxy {
+    CommandExecutorTest& test;
+
+    void set(std::string_view key, std::string_view value) {
+      test.shard_set(key, value);
+    }
+
+    std::optional<std::string> get(std::string_view key) {
+      return test.shard_get(key);
+    }
+
+    bool expire(std::string_view key, std::size_t seconds) {
+      return test.shard_expire(key, seconds);
+    }
+
+    std::int64_t ttl(std::string_view key) { return test.shard_ttl(key); }
+
+    void remove_expired_keys(tinycache::TimePoint now) {
+      test.shard_remove_expired(now);
+    }
+  };
+
+  CommandExecutorTest()
+      : shard_pool_(1, 100),
+        executor_impl_(shard_pool_),
+        executor_({*this}),
+        cache_({*this}) {
+    shard_pool_.start();
+  }
+
+  ~CommandExecutorTest() override { shard_pool_.stop(); }
+
+  RespValue execute(Command cmd) {
+    io_context_.restart();
+    auto future = asio::co_spawn(io_context_, executor_impl_.execute(cmd),
+                                 asio::use_future);
+    io_context_.run();
+    return future.get();
+  }
+
+  template <typename Fn>
+  auto run_on_shard(Fn&& fn) -> decltype(fn(std::declval<LruShard&>())) {
+    io_context_.restart();
+    auto future = asio::co_spawn(
+        io_context_, shard_pool_.run_on_shard(0, std::forward<Fn>(fn)),
+        asio::use_future);
+    io_context_.run();
+    return future.get();
+  }
+
+  void shard_set(std::string_view key, std::string_view value) {
+    run_on_shard([&](LruShard& shard) {
+      shard.set(key, value);
+      return true;
+    });
+  }
+
+  std::optional<std::string> shard_get(std::string_view key) {
+    return run_on_shard([&](LruShard& shard) { return shard.get(key); });
+  }
+
+  bool shard_expire(std::string_view key, std::size_t seconds) {
+    return run_on_shard(
+        [&](LruShard& shard) { return shard.expire(key, seconds); });
+  }
+
+  std::int64_t shard_ttl(std::string_view key) {
+    return run_on_shard([&](LruShard& shard) { return shard.ttl(key); });
+  }
+
+  void shard_remove_expired(tinycache::TimePoint now) {
+    run_on_shard([&](LruShard& shard) {
+      shard.remove_expired_keys(now);
+      return true;
+    });
+  }
+
+  asio::io_context io_context_;
+  ShardPool shard_pool_;
+  CommandExecutor executor_impl_;
+  ExecutorProxy executor_;
+  CacheProxy cache_;
 };
 
 // GET COMMAND TESTS

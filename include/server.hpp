@@ -5,8 +5,7 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <config.hpp>
-#include "expirationController.hpp"
-#include "lruCache.hpp"
+#include "shardPool.hpp"
 
 namespace asio = boost::asio;
 
@@ -17,8 +16,7 @@ class Server {
   void run();
 
  private:
-  LruCache cache_;
-  ExpirationController expiration_controller_;
+  ShardPool shard_pool_;
   asio::io_context io_context_;
   asio::ip::tcp::acceptor acceptor_;
 

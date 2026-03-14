@@ -3,7 +3,7 @@
 
 namespace tinycache {
 
-ExpirationController::ExpirationController(LruCache& cache) : cache_(cache) {}
+ExpirationController::ExpirationController(LruShard& cache) : cache_(cache) {}
 
 asio::awaitable<void> ExpirationController::cleaning_loop() {
   spdlog::debug("ExpirationController: cleaning_loop started");
