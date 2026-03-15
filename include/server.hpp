@@ -19,6 +19,7 @@ class Server {
   ShardPool shard_pool_;
   asio::io_context io_context_;
   asio::ip::tcp::acceptor acceptor_;
+  std::size_t next_shard_ = 0;
 
   asio::awaitable<void> listener();
 

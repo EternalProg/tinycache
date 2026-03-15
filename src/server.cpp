@@ -39,17 +39,20 @@ asio::awaitable<void> Server::listener() {
   spdlog::info("Press Ctrl+C to stop the server");
 
   for (;;) {
-    auto [ec, socket] = co_await acceptor_.async_accept(kAsTuple);
+    auto shard_index = next_shard_++ % shard_pool_.size();
+    asio::ip::tcp::socket socket(shard_pool_.executor_for(shard_index));
+    auto [ec] = co_await acceptor_.async_accept(socket, kAsTuple);
     if (ec) {
       spdlog::error("Accept error: {}", ec.message());
       continue;
     }
     spdlog::info("New Connection");
 
-    auto session = std::make_shared<Session>(std::move(socket), shard_pool_);
+    auto session =
+        std::make_shared<Session>(std::move(socket), shard_pool_, shard_index);
 
     co_spawn(
-        io_context_,
+        shard_pool_.executor_for(shard_index),
         [session]() -> asio::awaitable<void> { co_await session->run(); },
         asio::detached);
   }

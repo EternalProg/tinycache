@@ -16,7 +16,8 @@ enum class ReadResult { kNewMessage, kCloseConnection, kReadError };
 
 class Session : public std::enable_shared_from_this<Session> {
  public:
-  explicit Session(asio::ip::tcp::socket socket, ShardPool& shard_pool);
+  explicit Session(asio::ip::tcp::socket socket, ShardPool& shard_pool,
+                   std::size_t home_shard);
   asio::awaitable<void> run();
 
  private:
@@ -24,6 +25,7 @@ class Session : public std::enable_shared_from_this<Session> {
   asio::streambuf buffer_;
   asio::strand<asio::ip::tcp::socket::executor_type> strand_;
   CommandExecutor executor_;
+  std::size_t home_shard_;
 
   [[nodiscard]] asio::awaitable<ReadResult> read();
   asio::awaitable<void> write(std::string_view message);
