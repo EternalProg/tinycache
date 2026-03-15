@@ -2,6 +2,7 @@
 #define TINYCACHE_SHARD_POOL_HPP
 
 #include <boost/asio.hpp>
+#include <boost/asio/any_io_executor.hpp>
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio/post.hpp>
 #include <boost/asio/this_coro.hpp>
@@ -27,6 +28,9 @@ class ShardPool {
   void stop();
 
   [[nodiscard]] std::size_t size() const;
+  [[nodiscard]] asio::any_io_executor executor_for(std::size_t shard_index);
+  [[nodiscard]] bool is_on_shard_thread(std::size_t shard_index) const;
+  [[nodiscard]] LruShard& local_shard(std::size_t shard_index);
 
   template <typename Fn>
   asio::awaitable<std::invoke_result_t<Fn, LruShard&>> run_on_shard(
@@ -61,6 +65,7 @@ class ShardPool {
     LruShard shard;
     ExpirationController expiration;
     std::thread thread;
+    std::thread::id thread_id;
 
     explicit Worker(std::size_t capacity);
   };

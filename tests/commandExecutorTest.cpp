@@ -61,8 +61,9 @@ class CommandExecutorTest : public ::testing::Test {
 
   RespValue execute(Command cmd) {
     io_context_.restart();
-    auto future = asio::co_spawn(io_context_, executor_impl_.execute(cmd),
-                                 asio::use_future);
+    auto future =
+        asio::co_spawn(io_context_, executor_impl_.execute(cmd, std::nullopt),
+                       asio::use_future);
     io_context_.run();
     return future.get();
   }

@@ -31,8 +31,10 @@ void ShardPool::start() {
     asio::co_spawn(worker.io_context, worker.expiration.cleaning_loop(),
                    asio::detached);
     auto* worker_ptr = &worker;
-    worker.thread =
-        std::thread([worker_ptr]() { worker_ptr->io_context.run(); });
+    worker.thread = std::thread([worker_ptr]() {
+      worker_ptr->thread_id = std::this_thread::get_id();
+      worker_ptr->io_context.run();
+    });
   }
 }
 
@@ -56,6 +58,22 @@ void ShardPool::stop() {
 
 std::size_t ShardPool::size() const {
   return workers_.size();
+}
+
+asio::any_io_executor ShardPool::executor_for(std::size_t shard_index) {
+  assert(shard_index < workers_.size());
+  return workers_[shard_index].io_context.get_executor();
+}
+
+bool ShardPool::is_on_shard_thread(std::size_t shard_index) const {
+  assert(shard_index < workers_.size());
+  return workers_[shard_index].thread_id == std::this_thread::get_id();
+}
+
+LruShard& ShardPool::local_shard(std::size_t shard_index) {
+  assert(shard_index < workers_.size());
+  assert(is_on_shard_thread(shard_index));
+  return workers_[shard_index].shard;
 }
 
 }  // namespace tinycache

@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <command.hpp>
 #include <commandExecutor.hpp>
+#include <optional>
 #include <shardRouter.hpp>
 #include <string_view>
 #include <utility>
@@ -184,12 +185,21 @@ RespValue processUnknownCommand() {
 CommandExecutor::CommandExecutor(ShardPool& shard_pool)
     : shard_pool_(shard_pool) {}
 
-asio::awaitable<RespValue> CommandExecutor::execute(Command& cmd) {
+asio::awaitable<RespValue> CommandExecutor::execute(
+    Command& cmd, std::optional<std::size_t> home_shard) {
   auto shard_count = shard_pool_.size();
+  auto can_use_local =
+      home_shard.has_value() && shard_pool_.is_on_shard_thread(*home_shard);
+  auto is_local = [&](std::size_t shard_index) {
+    return can_use_local && shard_index == *home_shard;
+  };
   switch (cmd.type) {
     case CommandType::kGet: {
       const auto& key = cmd.args[0];
       auto shard_index = shard_router::getShardIndex(key, shard_count);
+      if (is_local(shard_index)) {
+        co_return processGetCommand(cmd, shard_pool_.local_shard(shard_index));
+      }
       co_return co_await shard_pool_.run_on_shard(
           shard_index,
           [&](LruShard& shard) { return processGetCommand(cmd, shard); });
@@ -197,6 +207,9 @@ asio::awaitable<RespValue> CommandExecutor::execute(Command& cmd) {
     case CommandType::kSet: {
       const auto& key = cmd.args[0];
       auto shard_index = shard_router::getShardIndex(key, shard_count);
+      if (is_local(shard_index)) {
+        co_return processSetCommand(cmd, shard_pool_.local_shard(shard_index));
+      }
       co_return co_await shard_pool_.run_on_shard(
           shard_index,
           [&](LruShard& shard) { return processSetCommand(cmd, shard); });
@@ -210,6 +223,14 @@ asio::awaitable<RespValue> CommandExecutor::execute(Command& cmd) {
       }
 
       std::int64_t deleted_count = 0;
+      if (can_use_local) {
+        auto local_index = *home_shard;
+        if (!keys_by_shard[local_index].empty()) {
+          deleted_count += processDelKeys(keys_by_shard[local_index],
+                                          shard_pool_.local_shard(local_index));
+          keys_by_shard[local_index].clear();
+        }
+      }
       for (std::size_t i = 0; i < keys_by_shard.size(); ++i) {
         if (keys_by_shard[i].empty()) {
           continue;
@@ -227,6 +248,10 @@ asio::awaitable<RespValue> CommandExecutor::execute(Command& cmd) {
     case CommandType::kExpire: {
       const auto& key = cmd.args[0];
       auto shard_index = shard_router::getShardIndex(key, shard_count);
+      if (is_local(shard_index)) {
+        co_return processExpireCommand(cmd,
+                                       shard_pool_.local_shard(shard_index));
+      }
       co_return co_await shard_pool_.run_on_shard(
           shard_index,
           [&](LruShard& shard) { return processExpireCommand(cmd, shard); });
@@ -234,6 +259,9 @@ asio::awaitable<RespValue> CommandExecutor::execute(Command& cmd) {
     case CommandType::kTtl: {
       const auto& key = cmd.args[0];
       auto shard_index = shard_router::getShardIndex(key, shard_count);
+      if (is_local(shard_index)) {
+        co_return processTtlCommand(cmd, shard_pool_.local_shard(shard_index));
+      }
       co_return co_await shard_pool_.run_on_shard(
           shard_index,
           [&](LruShard& shard) { return processTtlCommand(cmd, shard); });
