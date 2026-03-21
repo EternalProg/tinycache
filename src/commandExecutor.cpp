@@ -102,7 +102,7 @@ RespValue processExpireCommand(Command& cmd, LruShard& shard) {
     return RespValue(RespValue::Type::kInteger, result ? 1 : 0);
   } catch (const std::exception& e) {
     return RespValue(RespValue::Type::kError,
-                     "EXPIRE: ERR value is not an integer or out of range");
+                     "ERR value is not an integer or out of range");
   }
 }
 
