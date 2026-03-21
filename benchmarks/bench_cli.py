@@ -123,6 +123,18 @@ def parse_args():
     run.add_argument("--perf-delim", default=",", help="CSV delimiter for perf")
     run.add_argument("--perf-events", default=None, help="Comma-separated perf events")
     run.add_argument("--perf-args", default=None, help="Extra perf stat args")
+    run.add_argument(
+        "--perf-target",
+        default="client",
+        choices=["client", "server"],
+        help="Perf target process (default: client)",
+    )
+    run.add_argument(
+        "--perf-server-pid",
+        type=int,
+        default=None,
+        help="Server PID when --perf-target=server",
+    )
     run.add_argument("--gbench-format", default="json", choices=["json", "csv"])
     run.add_argument("--gbench-args", default=None, help="Extra gbench args")
 
@@ -157,22 +169,45 @@ def resolve_env_str(name, default):
     return value if value else default
 
 
-def build_perf_command(perf_out, perf_format, perf_events, perf_args, perf_delim):
+def build_perf_command(
+    perf_out,
+    perf_format,
+    perf_events,
+    perf_args,
+    perf_delim,
+    perf_target,
+    perf_server_pid,
+):
     cmd = ["perf", "stat", "-o", perf_out, "-e", perf_events]
     if perf_format == "csv":
         cmd.insert(2, f"-x{perf_delim}")
+    if perf_target == "server":
+        if perf_server_pid is None:
+            raise ValueError("perf_server_pid is required for server perf target")
+        cmd.extend(["-p", str(perf_server_pid)])
     if perf_args:
         cmd.extend(perf_args)
     return cmd
 
 
-def run_with_perf(command, perf_out, perf_format, perf_events, perf_args, perf_delim):
+def run_with_perf(
+    command,
+    perf_out,
+    perf_format,
+    perf_events,
+    perf_args,
+    perf_delim,
+    perf_target,
+    perf_server_pid,
+):
     perf_cmd = build_perf_command(
         perf_out=perf_out,
         perf_format=perf_format,
         perf_events=perf_events,
         perf_args=perf_args,
         perf_delim=perf_delim,
+        perf_target=perf_target,
+        perf_server_pid=perf_server_pid,
     )
     env = os.environ.copy()
     if perf_format == "csv":
@@ -946,6 +981,8 @@ def write_metadata(out_dir, args, redis_out, gbench_out, perf_outs, context):
         "suite": args.suite,
         "perf": args.perf,
         "perf_format": args.perf_format,
+        "perf_target": args.perf_target,
+        "perf_server_pid": args.perf_server_pid,
         "perf_events": context["perf_events"],
         "perf_args": args.perf_args,
         "redis_csv": str(redis_out) if redis_out else None,
@@ -975,6 +1012,17 @@ def main():
         text = compare_runs(args.left, args.right, args.format)
         emit_output(text, args.out)
         return
+
+    if args.perf and args.perf_target == "server":
+        if args.perf_server_pid is None:
+            print(
+                "ERROR: --perf-server-pid is required when --perf-target=server",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if args.perf_server_pid <= 0:
+            print("ERROR: --perf-server-pid must be > 0", file=sys.stderr)
+            sys.exit(1)
 
     if args.mode in ("resp", "lru_mt") and args.suite in ("redis", "all"):
         print(
@@ -1071,6 +1119,8 @@ def main():
                 perf_events=perf_events,
                 perf_args=perf_args,
                 perf_delim=args.perf_delim,
+                perf_target=args.perf_target,
+                perf_server_pid=args.perf_server_pid,
             )
             perf_outputs["redis"] = str(perf_redis_out)
 
@@ -1096,6 +1146,8 @@ def main():
                 perf_events=perf_events,
                 perf_args=perf_args,
                 perf_delim=args.perf_delim,
+                perf_target=args.perf_target,
+                perf_server_pid=args.perf_server_pid,
             )
             perf_outputs["gbench"] = str(perf_gbench_out)
 

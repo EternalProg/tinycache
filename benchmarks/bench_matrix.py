@@ -63,8 +63,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--max-items",
-        default="512,1024,2048",
-        help="Comma-separated max_items_per_shard values (default: 512,1024,2048)",
+        default="512,1024,2048,16384",
+        help="Comma-separated max_items_per_shard values (default: 512,1024,2048,16384)",
     )
     parser.add_argument(
         "--modes",
@@ -144,6 +144,12 @@ def parse_args() -> argparse.Namespace:
         "--perf",
         action="store_true",
         help="Run selected suite under perf stat",
+    )
+    parser.add_argument(
+        "--perf-target",
+        choices=["client", "server"],
+        default="client",
+        help="Perf target process (default: client)",
     )
     parser.add_argument(
         "--perf-format",
@@ -259,7 +265,9 @@ def stop_server(proc: subprocess.Popen) -> None:
         proc.wait(timeout=5)
 
 
-def run_one_mode(args: argparse.Namespace, mode: str, out_dir: Path) -> None:
+def run_one_mode(
+    args: argparse.Namespace, mode: str, out_dir: Path, server_pid: int | None = None
+) -> None:
     cmd = [
         sys.executable,
         str(ROOT_DIR / "benchmarks" / "bench_cli.py"),
@@ -290,6 +298,11 @@ def run_one_mode(args: argparse.Namespace, mode: str, out_dir: Path) -> None:
         cmd.extend(["--warmup", str(args.warmup)])
     if args.perf:
         cmd.extend(["--perf", "--perf-format", args.perf_format])
+        cmd.extend(["--perf-target", args.perf_target])
+        if args.perf_target == "server":
+            if server_pid is None:
+                raise RuntimeError("server pid is required for --perf-target=server")
+            cmd.extend(["--perf-server-pid", str(server_pid)])
         if args.perf_delim:
             cmd.extend(["--perf-delim", args.perf_delim])
         if args.perf_events:
@@ -338,6 +351,7 @@ def main() -> None:
         "warmup": args.warmup,
         "suite": args.suite,
         "perf": args.perf,
+        "perf_target": args.perf_target,
         "perf_format": args.perf_format,
         "perf_delim": args.perf_delim,
         "perf_events": args.perf_events,
@@ -406,7 +420,14 @@ def main() -> None:
                             attempt = 0
                             while True:
                                 try:
-                                    run_one_mode(args, mode, run_out)
+                                    run_one_mode(
+                                        args,
+                                        mode,
+                                        run_out,
+                                        server_proc.pid
+                                        if args.perf and args.perf_target == "server"
+                                        else None,
+                                    )
                                     break
                                 except subprocess.CalledProcessError:
                                     if attempt >= args.mode_retries:
