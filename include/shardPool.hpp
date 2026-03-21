@@ -4,11 +4,11 @@
 #include <boost/asio.hpp>
 #include <boost/asio/any_io_executor.hpp>
 #include <boost/asio/awaitable.hpp>
-#include <boost/asio/post.hpp>
-#include <boost/asio/this_coro.hpp>
+#include <boost/asio/co_spawn.hpp>
 #include <boost/asio/use_awaitable.hpp>
 #include <cassert>
 #include <deque>
+#include <functional>
 #include <thread>
 #include <type_traits>
 #include <utility>
@@ -38,24 +38,18 @@ class ShardPool {
     using Result = std::invoke_result_t<Fn, LruShard&>;
     assert(shard_index < workers_.size());
 
-    auto executor = co_await asio::this_coro::executor;
-
-    auto token = asio::use_awaitable;
-    co_return co_await asio::async_initiate<void(Result)>(
-        [this, shard_index, fn = std::forward<Fn>(fn),
-         executor](auto handler) mutable {
-          auto& worker = workers_[shard_index];
-          asio::post(worker.io_context, [this, shard_index, fn = std::move(fn),
-                                         handler = std::move(handler),
-                                         executor]() mutable {
-            Result result = fn(workers_[shard_index].shard);
-            asio::post(executor, [handler = std::move(handler),
-                                  result = std::move(result)]() mutable {
-              handler(std::move(result));
-            });
-          });
+    auto& worker = workers_[shard_index];
+    co_return co_await asio::co_spawn(
+        worker.io_context,
+        [fn = std::forward<Fn>(fn),
+         &worker]() mutable -> asio::awaitable<Result> {
+          if constexpr (std::is_void_v<Result>) {
+            std::invoke(std::move(fn), worker.shard);
+            co_return;
+          }
+          co_return std::invoke(std::move(fn), worker.shard);
         },
-        token);
+        asio::use_awaitable);
   }
 
  private:
