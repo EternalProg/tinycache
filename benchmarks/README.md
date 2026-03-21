@@ -75,6 +75,40 @@ Unified Python CLI (run + compare):
 ./benchmarks/bench_cli.py compare --left bench/lru_mt_01 --right bench/lru_mt_02
 ```
 
+Matrix runner (automates shard/item/workload combinations):
+```bash
+./build.sh core --release
+./build.sh bench --release
+python3 ./benchmarks/bench_matrix.py --out bench/matrix_default
+```
+
+Defaults used by matrix runner:
+- shards: `1,2,4,8`
+- max_items_per_shard: `512,1024,2048`
+- modes: `read_heavy,balanced,write_heavy`
+- suite: `all` (redis + gbench)
+- clients: `32`
+- requests: `50000`
+
+Custom matrix example:
+```bash
+python3 ./benchmarks/bench_matrix.py \
+  --out bench/matrix_custom \
+  --shards 1,2,4,8 \
+  --max-items 512,1024,2048 \
+  --modes read_heavy,balanced,write_heavy \
+  --suite all \
+  --perf --perf-format text \
+  --clients 32 \
+  --requests 50000
+```
+
+Notes:
+- The runner updates `config.toml` for each config, starts `./build/tinycache`, runs benchmarks, then restores the original config at the end.
+- Each config gets its own output folder: `shards_<N>__items_<M>/`.
+- Run metadata is saved in `matrix_manifest.json`.
+- If you run with `--perf`, every config/mode writes `perf_redis_bench_<mode>.*` and `perf_gbench_<mode>.*` (when `--suite` includes those suites).
+
 Notes:
 - `bench_cli.py run` writes mode-suffixed outputs so you can store multiple modes in the same `--out` directory (e.g. `gbench_read_heavy.json`, `gbench_lru_mt.json`, `perf_gbench_read_heavy.csv`, ...).
 
