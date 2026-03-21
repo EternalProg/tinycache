@@ -28,7 +28,7 @@ class Session : public std::enable_shared_from_this<Session> {
   std::size_t home_shard_;
 
   [[nodiscard]] asio::awaitable<ReadResult> read();
-  asio::awaitable<void> write(std::string_view message);
+  asio::awaitable<void> write(std::string message);
 };
 
 }  // namespace tinycache

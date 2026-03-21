@@ -2,6 +2,7 @@
 #include <boost/asio/bind_executor.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/asio/read_until.hpp>
+#include <boost/asio/redirect_error.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/asio/write.hpp>
 #include <command.hpp>
@@ -58,13 +59,18 @@ asio::awaitable<void> Session::run() {
 }
 
 asio::awaitable<ReadResult> Session::read() {
-  auto [ec, nbytes] =
-      co_await asio::async_read(socket_, buffer_, asio::transfer_at_least(1),
-                                asio::bind_executor(strand_, kAsTuple));
+  boost::system::error_code ec;
+  [[maybe_unused]] auto nbytes = co_await asio::async_read(
+      socket_, buffer_, asio::transfer_at_least(1),
+      asio::bind_executor(strand_,
+                          asio::redirect_error(asio::use_awaitable, ec)));
 
   if (ec == asio::error::eof) {
     spdlog::debug("Client closed (EOF)");
-    co_return ReadResult::kNewMessage;  // allow parsing
+    if (buffer_.size() > 0) {
+      co_return ReadResult::kNewMessage;
+    }
+    co_return ReadResult::kCloseConnection;
   }
 
   if (ec) {
@@ -75,9 +81,12 @@ asio::awaitable<ReadResult> Session::read() {
   co_return ReadResult::kNewMessage;
 }
 
-asio::awaitable<void> Session::write(std::string_view message) {
-  auto [ec, _] = co_await asio::async_write(
-      socket_, asio::buffer(message), asio::bind_executor(strand_, kAsTuple));
+asio::awaitable<void> Session::write(std::string message) {
+  boost::system::error_code ec;
+  [[maybe_unused]] auto nbytes = co_await asio::async_write(
+      socket_, asio::buffer(message),
+      asio::bind_executor(strand_,
+                          asio::redirect_error(asio::use_awaitable, ec)));
 
   if (ec == asio::error::eof) {
     spdlog::debug("Connection is closing");

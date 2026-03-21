@@ -1,5 +1,6 @@
 #include <spdlog/spdlog.h>
 #include <boost/asio/detached.hpp>
+#include <boost/asio/redirect_error.hpp>
 #include <boost/asio/signal_set.hpp>
 #include <server.hpp>
 #include <session.hpp>
@@ -41,7 +42,9 @@ asio::awaitable<void> Server::listener() {
   for (;;) {
     auto shard_index = next_shard_++ % shard_pool_.size();
     asio::ip::tcp::socket socket(shard_pool_.executor_for(shard_index));
-    auto [ec] = co_await acceptor_.async_accept(socket, kAsTuple);
+    boost::system::error_code ec;
+    co_await acceptor_.async_accept(
+        socket, asio::redirect_error(asio::use_awaitable, ec));
     if (ec) {
       spdlog::error("Accept error: {}", ec.message());
       continue;
