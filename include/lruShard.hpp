@@ -2,6 +2,7 @@
 #define TINYCACHE_LRU_SHARD_HPP
 
 #include <chrono>
+#include <functional>
 #include <list>
 #include <map>
 #include <optional>
@@ -13,6 +14,31 @@ namespace tinycache {
 
 using Key = std::string;
 using TimePoint = std::chrono::steady_clock::time_point;
+
+struct TransparentKeyHash {
+  using is_transparent = void;
+
+  [[nodiscard]] std::size_t operator()(std::string_view key) const noexcept {
+    return std::hash<std::string_view>{}(key);
+  }
+
+  [[nodiscard]] std::size_t operator()(const Key& key) const noexcept {
+    return (*this)(std::string_view{key});
+  }
+
+  [[nodiscard]] std::size_t operator()(const char* key) const noexcept {
+    return (*this)(std::string_view{key});
+  }
+};
+
+struct TransparentKeyEqual {
+  using is_transparent = void;
+
+  [[nodiscard]] bool operator()(std::string_view lhs,
+                                std::string_view rhs) const noexcept {
+    return lhs == rhs;
+  }
+};
 
 struct Entry {
   std::string value;
@@ -26,7 +52,10 @@ class LruShard {
   static constexpr std::size_t kDefaultCapacity = 1024;
 
   explicit LruShard(std::size_t capacity = kDefaultCapacity)
-      : capacity_(capacity) {}
+      : capacity_(capacity) {
+    map_.max_load_factor(0.80F);
+    map_.reserve(capacity_);
+  }
 
   [[nodiscard]] std::optional<std::string> get(std::string_view key);
 
@@ -45,10 +74,13 @@ class LruShard {
   void remove_expired_keys(TimePoint now);
 
  private:
-  void evict_lru();
-  void remove_key(std::unordered_map<Key, Entry>::iterator it);
+  using Map =
+      std::unordered_map<Key, Entry, TransparentKeyHash, TransparentKeyEqual>;
 
-  std::unordered_map<Key, Entry> map_;
+  void evict_lru();
+  void remove_key(Map::iterator it);
+
+  Map map_;
   std::list<Key> lru_list_;
   std::multimap<TimePoint, Key> expire_map_;
   std::size_t capacity_;

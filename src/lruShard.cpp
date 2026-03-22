@@ -16,7 +16,7 @@ bool is_expired(
 
 }  // namespace
 
-void LruShard::remove_key(std::unordered_map<Key, Entry>::iterator it) {
+void LruShard::remove_key(LruShard::Map::iterator it) {
   if (it != map_.end()) {
     Entry& entry = it->second;
 
@@ -33,7 +33,7 @@ void LruShard::remove_key(std::unordered_map<Key, Entry>::iterator it) {
 }
 
 std::optional<std::string> LruShard::get(std::string_view key) {
-  auto it = map_.find(std::string(key));
+  auto it = map_.find(key);
 
   if (it != map_.end()) {
     Entry& entry = it->second;
@@ -53,8 +53,6 @@ std::optional<std::string> LruShard::get(std::string_view key) {
 
 void LruShard::set(std::string_view key, std::string_view value,
                    std::optional<std::size_t> expire_seconds) {
-  Key key_str(key);
-
   auto expire_at =
       expire_seconds.has_value()
           ? std::optional(std::chrono::steady_clock::now() +
@@ -62,10 +60,10 @@ void LruShard::set(std::string_view key, std::string_view value,
           : std::nullopt;
 
   // Case 1: key already exists, update it and move to front
-  auto it = map_.find(key_str);
+  auto it = map_.find(key);
   if (it != map_.end()) {
     Entry& entry = it->second;
-    entry.value = std::string(value);
+    entry.value.assign(value.data(), value.size());
 
     // Any previous time to live associated with the key is discarded on successful SET operation
     if (entry.expire_it != expire_map_.end()) {
@@ -74,7 +72,7 @@ void LruShard::set(std::string_view key, std::string_view value,
 
     if (expire_at.has_value()) {
       // Add new expiration
-      entry.expire_it = expire_map_.emplace(expire_at.value(), key_str);
+      entry.expire_it = expire_map_.emplace(expire_at.value(), it->first);
     } else {
       entry.expire_it = expire_map_.end();
     }
@@ -91,22 +89,21 @@ void LruShard::set(std::string_view key, std::string_view value,
     evict_lru();
   }
 
+  Key key_str(key);
   lru_list_.push_front(key_str);
   auto expire_it = expire_map_.end();
   if (expire_at.has_value()) {
     expire_it = expire_map_.emplace(expire_at.value(), key_str);
   }
 
-  auto new_entry = Entry{.value = std::string(value),
-                         .expire_at = expire_at,
-                         .lru_it = lru_list_.begin(),
-                         .expire_it = expire_it};
-
-  map_[key_str] = new_entry;
+  map_.emplace(std::move(key_str), Entry{.value = std::string(value),
+                                         .expire_at = expire_at,
+                                         .lru_it = lru_list_.begin(),
+                                         .expire_it = expire_it});
 }
 
 bool LruShard::del(std::string_view key) {
-  auto it = map_.find(std::string(key));
+  auto it = map_.find(key);
   bool existed = it != map_.end();
   remove_key(it);
 
@@ -114,7 +111,7 @@ bool LruShard::del(std::string_view key) {
 }
 
 bool LruShard::expire(std::string_view key, std::size_t seconds) {
-  auto it = map_.find(std::string(key));
+  auto it = map_.find(key);
   if (it != map_.end()) {
     Entry& entry = it->second;
 
@@ -125,7 +122,7 @@ bool LruShard::expire(std::string_view key, std::size_t seconds) {
 
     auto expire_at =
         std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
-    auto expire_it = expire_map_.emplace(expire_at, std::string(key));
+    auto expire_it = expire_map_.emplace(expire_at, it->first);
 
     entry.expire_at = expire_at;
     entry.expire_it = expire_it;
@@ -137,7 +134,7 @@ bool LruShard::expire(std::string_view key, std::size_t seconds) {
 }
 
 std::int64_t LruShard::ttl(std::string_view key) {
-  auto it = map_.find(std::string(key));
+  auto it = map_.find(key);
 
   // Key doesn't exist
   if (it == map_.end()) {
