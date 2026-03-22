@@ -178,7 +178,7 @@ void LruShard::remove_expired_keys(TimePoint now) {
 
     auto map_it = map_.find(key);
     if (map_it != map_.end()) {
-      spdlog::debug("Removing expired key: {}", key);
+      SPDLOG_DEBUG("Removing expired key: {}", key);
       Entry& entry = map_it->second;
 
       // Check if lru_it is valid before erasing

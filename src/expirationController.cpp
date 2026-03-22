@@ -6,7 +6,7 @@ namespace tinycache {
 ExpirationController::ExpirationController(LruShard& cache) : cache_(cache) {}
 
 asio::awaitable<void> ExpirationController::cleaning_loop() {
-  spdlog::debug("ExpirationController: cleaning_loop started");
+  SPDLOG_DEBUG("ExpirationController: cleaning_loop started");
   auto executor = co_await asio::this_coro::executor;
   asio::steady_timer timer(executor);
 

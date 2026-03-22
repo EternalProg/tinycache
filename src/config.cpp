@@ -18,7 +18,7 @@ Config get_config() {
   }
   config.shard_count = shard_count;
 
-  spdlog::debug(
+  SPDLOG_DEBUG(
       "Configuration loaded: host={}, port={}, max_items={}, shard_count={}",
       config.host, config.port, config.max_items_per_shard, config.shard_count);
 

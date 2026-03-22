@@ -13,6 +13,12 @@ aux_source_directory(${PROJECT_SOURCE_DIR}/src SOURCES)
 
 add_library(tinycache_flags INTERFACE)
 target_compile_options(tinycache_flags INTERFACE -Wall -Wextra -Wpedantic)
+target_compile_definitions(tinycache_flags INTERFACE
+  $<$<CONFIG:Debug>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG>
+  $<$<CONFIG:Release>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_WARN>
+  $<$<CONFIG:RelWithDebInfo>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_WARN>
+  $<$<CONFIG:MinSizeRel>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_WARN>
+)
 
 add_library(${TINYCACHE_LIB}
   ${SOURCES}

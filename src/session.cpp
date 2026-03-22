@@ -55,7 +55,7 @@ asio::awaitable<void> Session::run() {
     auto response = co_await executor_.execute(*command, home_shard_);
     co_await write(RespSerializer::serialize(response));
   }
-  spdlog::debug("Session closed");
+  SPDLOG_DEBUG("Session closed");
 }
 
 asio::awaitable<ReadResult> Session::read() {
@@ -66,7 +66,7 @@ asio::awaitable<ReadResult> Session::read() {
                           asio::redirect_error(asio::use_awaitable, ec)));
 
   if (ec == asio::error::eof) {
-    spdlog::debug("Client closed (EOF)");
+    SPDLOG_DEBUG("Client closed (EOF)");
     if (buffer_.size() > 0) {
       co_return ReadResult::kNewMessage;
     }
@@ -89,7 +89,7 @@ asio::awaitable<void> Session::write(std::string message) {
                           asio::redirect_error(asio::use_awaitable, ec)));
 
   if (ec == asio::error::eof) {
-    spdlog::debug("Connection is closing");
+    SPDLOG_DEBUG("Connection is closing");
     co_return;
   }
   if (ec) {
@@ -97,7 +97,7 @@ asio::awaitable<void> Session::write(std::string message) {
     co_return;
   }
 
-  spdlog::debug("Response sent: {}", message);
+  SPDLOG_DEBUG("Response sent: {}", message);
 }
 
 }  // namespace tinycache

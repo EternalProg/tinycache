@@ -14,7 +14,7 @@ namespace tinycache {
 
 namespace {
 RespValue processGetCommand(Command& cmd, LruShard& shard) {
-  spdlog::debug("GET {}", cmd.args[0]);
+  SPDLOG_DEBUG("GET {}", cmd.args[0]);
 
   if (auto result = shard.get(cmd.args[0]); result.has_value()) {
     return RespValue(RespValue::Type::kBulkString, *result);
@@ -37,7 +37,7 @@ RespValue processSetCommand(Command& cmd, LruShard& shard) {
     std::string& option = cmd.args[2];
     to_uppercase(option);
 
-    spdlog::debug("SET {} {} {}", key, cmd.args[1], option);
+    SPDLOG_DEBUG("SET {} {} {}", key, cmd.args[1], option);
 
     if (option == "NX") {
       if (shard.get(key).has_value()) {
@@ -54,8 +54,8 @@ RespValue processSetCommand(Command& cmd, LruShard& shard) {
     std::string& expire_option = cmd.args[2];
     to_uppercase(expire_option);
 
-    spdlog::debug("SET {} {} {} {}", key, cmd.args[1], expire_option,
-                  cmd.args[3]);
+    SPDLOG_DEBUG("SET {} {} {} {}", key, cmd.args[1], expire_option,
+                 cmd.args[3]);
 
     if (expire_option == "EX") {
       try {
@@ -83,7 +83,7 @@ std::int64_t processDelKeys(const std::vector<std::string_view>& keys,
   std::int64_t deleted_count = 0;
   for (auto key : keys) {
     if (shard.del(key)) {
-      spdlog::debug("\tDEL {}", key);
+      SPDLOG_DEBUG("\tDEL {}", key);
       ++deleted_count;
     }
   }
@@ -97,7 +97,7 @@ RespValue processExpireCommand(Command& cmd, LruShard& shard) {
 
     const auto& key = cmd.args[0];
     auto result = shard.expire(key, seconds);
-    spdlog::debug("EXPIRE {} {}", key, seconds);
+    SPDLOG_DEBUG("EXPIRE {} {}", key, seconds);
 
     return RespValue(RespValue::Type::kInteger, result ? 1 : 0);
   } catch (const std::exception& e) {
@@ -108,14 +108,14 @@ RespValue processExpireCommand(Command& cmd, LruShard& shard) {
 
 RespValue processTtlCommand(Command& cmd, LruShard& shard) {
   const auto& key = cmd.args[0];
-  spdlog::debug("TTL {}", key);
+  SPDLOG_DEBUG("TTL {}", key);
 
   std::int64_t ttl_value = shard.ttl(key);
   return RespValue(RespValue::Type::kInteger, ttl_value);
 }
 
 RespValue processPingCommand(Command& cmd) {
-  spdlog::debug("PING");
+  SPDLOG_DEBUG("PING");
   std::string response_str = "PONG";
   if (cmd.args.size() == 1) {
     response_str = std::move(cmd.args[0]);
@@ -126,7 +126,7 @@ RespValue processPingCommand(Command& cmd) {
 RespValue processCommandCommand(Command& cmd) {
   // Return the list of supported commands
   if (cmd.args.empty()) {
-    spdlog::debug("COMMAND");
+    SPDLOG_DEBUG("COMMAND");
     RespValue::RespArray commands;
     for (const auto& def : kCommands) {
       RespValue::RespArray cmd_info;
@@ -144,7 +144,7 @@ RespValue processCommandCommand(Command& cmd) {
   if (subcommand == "INFO") {
     // Returns @array-reply of details about multiple Redis commands.
     // Same result format as COMMAND except you can specify which commands get returned.
-    spdlog::debug("COMMAND INFO");
+    SPDLOG_DEBUG("COMMAND INFO");
     RespValue::RespArray commands;
     for (std::size_t i = 1; i < cmd.args.size(); ++i) {
       std::string& cmd_name = cmd.args[i];
@@ -167,7 +167,7 @@ RespValue processCommandCommand(Command& cmd) {
 
   if (subcommand == "COUNT") {
     // Returns @integer-reply of number of total commands in this Redis server.
-    spdlog::debug("COMMAND COUNT");
+    SPDLOG_DEBUG("COMMAND COUNT");
     auto count = static_cast<std::int64_t>(kCommands.size());
     return RespValue(RespValue::Type::kInteger, count);
   }
@@ -217,7 +217,7 @@ asio::awaitable<RespValue> CommandExecutor::execute_single_shard(
           [&](LruShard& shard) { return processSetCommand(cmd, shard); });
 
     case CommandType::kDel: {
-      spdlog::debug("DEL {} keys", cmd.args.size());
+      SPDLOG_DEBUG("DEL {} keys", cmd.args.size());
       std::vector<std::string_view> keys;
       keys.reserve(cmd.args.size());
       for (const auto& key : cmd.args) {
@@ -294,7 +294,7 @@ asio::awaitable<RespValue> CommandExecutor::execute_multi_shard(
           [&](LruShard& shard) { return processSetCommand(cmd, shard); });
     }
     case CommandType::kDel: {
-      spdlog::debug("DEL {} keys", cmd.args.size());
+      SPDLOG_DEBUG("DEL {} keys", cmd.args.size());
       std::vector<std::vector<std::string_view>> keys_by_shard(shard_count);
       for (const auto& key : cmd.args) {
         auto shard_index = shard_router::getShardIndex(key, shard_count);
