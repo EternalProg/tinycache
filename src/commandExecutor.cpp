@@ -183,9 +183,88 @@ RespValue processUnknownCommand() {
 }  // namespace
 
 CommandExecutor::CommandExecutor(ShardPool& shard_pool)
-    : shard_pool_(shard_pool) {}
+    : shard_pool_(shard_pool),
+      execute_impl_(shard_pool.size() == 1
+                        ? &CommandExecutor::execute_single_shard
+                        : &CommandExecutor::execute_multi_shard) {}
 
 asio::awaitable<RespValue> CommandExecutor::execute(
+    Command& cmd, std::optional<std::size_t> home_shard) {
+  co_return co_await (this->*execute_impl_)(cmd, home_shard);
+}
+
+asio::awaitable<RespValue> CommandExecutor::execute_single_shard(
+    Command& cmd, std::optional<std::size_t> home_shard) {
+  constexpr std::size_t kShardIndex = 0;
+  auto can_use_local = home_shard.has_value() && *home_shard == kShardIndex &&
+                       shard_pool_.is_on_shard_thread(kShardIndex);
+
+  switch (cmd.type) {
+    case CommandType::kGet:
+      if (can_use_local) {
+        co_return processGetCommand(cmd, shard_pool_.local_shard(kShardIndex));
+      }
+      co_return co_await shard_pool_.run_on_shard(
+          kShardIndex,
+          [&](LruShard& shard) { return processGetCommand(cmd, shard); });
+
+    case CommandType::kSet:
+      if (can_use_local) {
+        co_return processSetCommand(cmd, shard_pool_.local_shard(kShardIndex));
+      }
+      co_return co_await shard_pool_.run_on_shard(
+          kShardIndex,
+          [&](LruShard& shard) { return processSetCommand(cmd, shard); });
+
+    case CommandType::kDel: {
+      spdlog::debug("DEL {} keys", cmd.args.size());
+      std::vector<std::string_view> keys;
+      keys.reserve(cmd.args.size());
+      for (const auto& key : cmd.args) {
+        keys.push_back(key);
+      }
+
+      std::int64_t deleted_count = 0;
+      if (can_use_local) {
+        deleted_count =
+            processDelKeys(keys, shard_pool_.local_shard(kShardIndex));
+      } else {
+        deleted_count = co_await shard_pool_.run_on_shard(
+            kShardIndex, [keys = std::move(keys)](LruShard& shard) {
+              return processDelKeys(keys, shard);
+            });
+      }
+      co_return RespValue(RespValue::Type::kInteger, deleted_count);
+    }
+
+    case CommandType::kExpire:
+      if (can_use_local) {
+        co_return processExpireCommand(cmd,
+                                       shard_pool_.local_shard(kShardIndex));
+      }
+      co_return co_await shard_pool_.run_on_shard(
+          kShardIndex,
+          [&](LruShard& shard) { return processExpireCommand(cmd, shard); });
+
+    case CommandType::kTtl:
+      if (can_use_local) {
+        co_return processTtlCommand(cmd, shard_pool_.local_shard(kShardIndex));
+      }
+      co_return co_await shard_pool_.run_on_shard(
+          kShardIndex,
+          [&](LruShard& shard) { return processTtlCommand(cmd, shard); });
+
+    case CommandType::kPing:
+      co_return processPingCommand(cmd);
+    case CommandType::kCommand:
+      co_return processCommandCommand(cmd);
+    case CommandType::kUnknown:
+    default:
+      co_return processUnknownCommand();
+  }
+}
+
+asio::awaitable<RespValue> CommandExecutor::execute_multi_shard(
     Command& cmd, std::optional<std::size_t> home_shard) {
   auto shard_count = shard_pool_.size();
   auto can_use_local =

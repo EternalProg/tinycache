@@ -17,7 +17,16 @@ class CommandExecutor {
       Command& cmd, std::optional<std::size_t> home_shard = std::nullopt);
 
  private:
+  using ExecuteImpl = asio::awaitable<RespValue> (CommandExecutor::*)(
+      Command& cmd, std::optional<std::size_t> home_shard);
+
+  asio::awaitable<RespValue> execute_single_shard(
+      Command& cmd, std::optional<std::size_t> home_shard);
+  asio::awaitable<RespValue> execute_multi_shard(
+      Command& cmd, std::optional<std::size_t> home_shard);
+
   ShardPool& shard_pool_;
+  ExecuteImpl execute_impl_ = nullptr;
 };
 
 }  // namespace tinycache
