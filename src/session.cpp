@@ -25,35 +25,37 @@ Session::Session(asio::ip::tcp::socket socket, ShardPool& shard_pool,
 
 asio::awaitable<void> Session::run() {
   for (;;) {
+    while (buffer_.size() > 0) {
+      RespValue value;
+      auto parsing_result = RespParser::parse(buffer_, value);
+
+      if (parsing_result == ParsingResult::kNeedMoreData) {
+        break;
+      }
+
+      if (parsing_result == ParsingResult::kError) {
+        co_await write(RespSerializer::serialize(
+            RespValue(RespValue::Type::kError, "ERR malformed request")));
+        break;
+      }
+
+      std::optional<Command> command = Command::toCommand(value);
+
+      if (!command.has_value()) {
+        co_await write(RespSerializer::serialize(
+            RespValue(RespValue::Type::kError, "ERR invalid command")));
+        continue;
+      }
+
+      auto response = co_await executor_.execute(*command, home_shard_);
+      co_await write(RespSerializer::serialize(response));
+    }
+
     auto reading_result = co_await read();
 
     if (reading_result != ReadResult::kNewMessage) {
       break;
     }
-
-    RespValue value;
-    auto parsing_result = RespParser::parse(buffer_, value);
-
-    if (parsing_result == ParsingResult::kNeedMoreData) {
-      continue;
-    }
-
-    if (parsing_result == ParsingResult::kError) {
-      co_await write(RespSerializer::serialize(
-          RespValue(RespValue::Type::kError, "ERR malformed request")));
-      continue;
-    }
-
-    std::optional<Command> command = Command::toCommand(value);
-
-    if (!command.has_value()) {
-      co_await write(RespSerializer::serialize(
-          RespValue(RespValue::Type::kError, "ERR invalid command")));
-      continue;
-    }
-
-    auto response = co_await executor_.execute(*command, home_shard_);
-    co_await write(RespSerializer::serialize(response));
   }
   SPDLOG_DEBUG("Session closed");
 }
@@ -67,9 +69,6 @@ asio::awaitable<ReadResult> Session::read() {
 
   if (ec == asio::error::eof) {
     SPDLOG_DEBUG("Client closed (EOF)");
-    if (buffer_.size() > 0) {
-      co_return ReadResult::kNewMessage;
-    }
     co_return ReadResult::kCloseConnection;
   }
 
