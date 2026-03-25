@@ -68,6 +68,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE ${TINYCACHE_LIB} tinycache_flags)
 
 option(ENABLE_TESTS "Build Google Test tests" ON)
 if(ENABLE_TESTS)
+  enable_testing()
   # GTest configuration
   FetchContent_Declare(
     googletest

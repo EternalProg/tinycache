@@ -1,4 +1,3 @@
-enable_testing()
 set(Target TinyCacheTests)
 
 aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR} TEST_SOURCES)
@@ -20,3 +19,4 @@ target_link_libraries(${Target}
 
 include(GoogleTest)
 gtest_discover_tests(${Target})
+add_test(NAME ${Target} COMMAND ${Target})
