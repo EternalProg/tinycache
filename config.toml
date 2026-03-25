@@ -1,10 +1,11 @@
 [server]
 host = "0.0.0.0"
 port = 8080
+thread_affinity_enabled = true
 [cache]
 max_items_per_shard = 1024
 # max items per shard, total capacity = max_items_per_shard * shard_count
 default_ttl_seconds = 0
 # 0 = no default TTL
-shard_count = 4
+shard_count = 1
 # min 1

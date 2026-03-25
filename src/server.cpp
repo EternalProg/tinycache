@@ -9,7 +9,8 @@
 namespace tinycache {
 
 Server::Server(Config& config)
-    : shard_pool_(config.shard_count, config.max_items_per_shard),
+    : shard_pool_(config.shard_count, config.max_items_per_shard,
+                  config.thread_affinity_enabled),
       acceptor_(io_context_),
       signals_(io_context_, SIGINT, SIGTERM) {
 
