@@ -6,22 +6,27 @@ set(BENCHMARK_ENABLE_GTEST_TESTS OFF)  # Don't require GTest for benchmark itsel
 add_executable(tinycache_bench_read_heavy
   bench_read_heavy.cpp
 )
+tinycache_apply_optimizations(tinycache_bench_read_heavy)
 
 add_executable(tinycache_bench_balanced
   bench_balanced.cpp
 )
+tinycache_apply_optimizations(tinycache_bench_balanced)
 
 add_executable(tinycache_bench_write_heavy
   bench_write_heavy.cpp
 )
+tinycache_apply_optimizations(tinycache_bench_write_heavy)
 
 add_executable(tinycache_bench_resp
   bench_resp.cpp
 )
+tinycache_apply_optimizations(tinycache_bench_resp)
 
 add_executable(tinycache_bench_lru_mt
   bench_lru_mt.cpp
 )
+tinycache_apply_optimizations(tinycache_bench_lru_mt)
 
 # Link dependencies
 target_link_libraries(tinycache_bench_read_heavy PRIVATE

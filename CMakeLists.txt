@@ -1,9 +1,8 @@
 cmake_minimum_required(VERSION 3.14)
 
-project(tinycache)
+project(tinycache LANGUAGES CXX)
 
 set(TINYCACHE_LIB tinycache_lib)
-set(DEBUG_FLAGS -Wall -Wextra -Wpedantic -g)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,9 +19,12 @@ target_compile_definitions(tinycache_flags INTERFACE
   $<$<CONFIG:MinSizeRel>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_WARN>
 )
 
+include(${CMAKE_SOURCE_DIR}/cmake/BuildOptimizations.cmake)
+
 add_library(${TINYCACHE_LIB}
   ${SOURCES}
 )
+tinycache_apply_optimizations(${TINYCACHE_LIB})
 
 target_include_directories(${TINYCACHE_LIB} PUBLIC
   ${PROJECT_SOURCE_DIR}/include
@@ -62,6 +64,7 @@ target_link_libraries(${TINYCACHE_LIB} PRIVATE
 set(MAIN_FILE src/main.cpp)
 
 add_executable(${PROJECT_NAME} ${MAIN_FILE})
+tinycache_apply_optimizations(${PROJECT_NAME})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${TINYCACHE_LIB} tinycache_flags)
 
 # Testing and Benchmarking configuration
