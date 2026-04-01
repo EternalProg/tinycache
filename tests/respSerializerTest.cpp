@@ -285,6 +285,30 @@ TEST_F(RespSerializerTest, SerializeDeeplyNestedArrays) {
             ":7\r\n");
 }
 
+TEST_F(RespSerializerTest, SerializeVeryDeepNestedArraysWithoutRecursion) {
+  constexpr std::size_t kDepth = 2000;
+
+  RespValue current = CreateInteger(7);
+  for (std::size_t i = 0; i < kDepth; ++i) {
+    RespValue::RespArray elements;
+    elements.emplace_back(std::move(current));
+    current = RespValue(RespValue::Type::kArray, std::move(elements));
+  }
+
+  std::string result = RespSerializer::serialize(current);
+
+  std::size_t offset = 0;
+  for (std::size_t i = 0; i < kDepth; ++i) {
+    ASSERT_LE(offset + 4, result.size());
+    EXPECT_EQ(result.compare(offset, 4, "*1\r\n"), 0);
+    offset += 4;
+  }
+
+  ASSERT_LE(offset + 4, result.size());
+  EXPECT_EQ(result.compare(offset, 4, ":7\r\n"), 0);
+  EXPECT_EQ(result.size(), offset + 4);
+}
+
 TEST_F(RespSerializerTest, SerializeComplexNestedStructure) {
   // Represents: ["SET", "key", "value"] command array
   std::vector<RespValue> cmd = {
