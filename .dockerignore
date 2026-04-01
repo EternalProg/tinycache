@@ -1,0 +1,8 @@
+.git
+.beads
+.cache
+.ruff_cache
+venv
+build
+bench
+compile_commands.json

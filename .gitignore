@@ -1,6 +1,7 @@
 compile_commands.json
 .cache/
 build/
+bench/
 
 # Prerequisites
 *.d
@@ -43,3 +44,6 @@ build/
 
 # debug information files
 *.dwo
+
+# bv (beads viewer) local config and caches
+.bv/

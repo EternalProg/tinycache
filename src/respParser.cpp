@@ -1,12 +1,11 @@
 #include "respParser.hpp"
-#include <boost/asio/buffers_iterator.hpp>
-#include <cstdint>
-#include <iterator>
-#include <string>
-#include "respValue.hpp"
 
-// 16Mb; Default RESP use 512Mb
-static constexpr std::size_t kMaxBulkSize = 1024 * 1024 * 16 /*512*/;
+#include <boost/asio/buffers_iterator.hpp>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <string>
+#include <vector>
 
 namespace tinycache {
 
@@ -14,370 +13,297 @@ namespace asio = boost::asio;
 
 namespace {
 
+// Keep parser limits conservative to prevent oversized allocations.
+constexpr std::uint64_t kMaxBulkSize = 16ULL * 1024ULL * 1024ULL;
+constexpr std::uint64_t kMaxArrayLength = 1ULL * 1024ULL * 1024ULL;
+constexpr std::size_t kMaxNestingDepth = 4096;
+
 class RespParserImpl {
  public:
   template <std::random_access_iterator Iterator>
   static ParsingResult parseImpl(Iterator begin, Iterator end,
-                                 std::uint64_t& consumed, RespValue& outValue);
+                                 std::size_t& consumed, RespValue& outValue);
 
  private:
-  template <std::random_access_iterator Iterator>
-  static ParsingResult dispatchParsing(RespValue::Type type, Iterator it,
-                                       Iterator end, std::uint64_t& consumed,
-                                       RespValue& outValue);
-
-  static RespValue::Type determineType(char type);
-
-  template <typename Iterator>
-  static Iterator findCrlf(Iterator it, Iterator end);
+  struct ArrayFrame {
+    std::size_t remaining = 0;
+    RespValue::RespArray elements;
+  };
 
   template <std::random_access_iterator Iterator>
-  static ParsingResult parseSimpleString(Iterator it, Iterator end,
-                                         std::uint64_t& consumed,
-                                         RespValue& outValue);
+  static std::size_t findCrlf(Iterator begin, std::size_t size,
+                              std::size_t start);
 
   template <std::random_access_iterator Iterator>
-  static ParsingResult parseBulkString(Iterator it, Iterator end,
-                                       std::uint64_t& consumed,
-                                       RespValue& outValue);
+  static bool parseInt64Token(Iterator begin, std::size_t token_start,
+                              std::size_t token_end, std::int64_t& out);
 
-  template <std::random_access_iterator Iterator>
-  static ParsingResult parseInteger(Iterator it, Iterator end,
-                                    std::uint64_t& consumed,
-                                    RespValue& outValue);
-
-  template <std::random_access_iterator Iterator>
-  static ParsingResult parseArray(Iterator it, Iterator end,
-                                  std::uint64_t& consumed, RespValue& outValue);
-
-  template <std::random_access_iterator Iterator>
-  static ParsingResult parseError(Iterator it, Iterator end,
-                                  std::uint64_t& consumed, RespValue& outValue);
+  static void attachValue(RespValue value, std::vector<ArrayFrame>& stack,
+                          RespValue& root_value, bool& root_ready);
 };
-
-// ParsingResult RespParserImpl::parseImpl(asio::streambuf& buffer,
-//                                         RespValue& outValue) {
-//   if (buffer.size() == 0) {
-//     return ParsingResult::kNeedMoreData;
-//   }
-
-//   auto data = buffer.data();
-//   auto begin = boost::asio::buffers_begin(data);
-//   auto end = boost::asio::buffers_end(data);
-
-//   if (begin == end) {
-//     return ParsingResult::kNeedMoreData;
-//   }
-
-//   auto it = begin;
-
-//   auto type = determineType(*it);
-//   if (type == RespValue::Type::kUnknown) {
-//     return ParsingResult::kError;
-//   }
-//   ++it;
-
-//   // Because the first char is consumed to determine type
-//   std::uint64_t consumed = 1;
-
-//   ParsingResult result = dispatchParsing(type, it, end, consumed, outValue);
-
-//   if (result != ParsingResult::kNeedMoreData) {
-//     buffer.consume(consumed);
-//   }
-
-//   return result;
-// }
 
 template <std::random_access_iterator Iterator>
 ParsingResult RespParserImpl::parseImpl(Iterator begin, Iterator end,
-                                        std::uint64_t& consumed,
+                                        std::size_t& consumed,
                                         RespValue& outValue) {
-  if (begin == end) {
+  consumed = 0;
+
+  const auto size = static_cast<std::size_t>(std::distance(begin, end));
+  if (size == 0) {
     return ParsingResult::kNeedMoreData;
   }
 
-  auto it = begin;
+  std::size_t pos = 0;
+  std::vector<ArrayFrame> stack;
+  stack.reserve(8);
 
-  auto type = determineType(*it);
-  if (type == RespValue::Type::kUnknown) {
-    return ParsingResult::kError;
-  }
-  ++it;
+  RespValue root_value;
+  bool root_ready = false;
 
-  // Because the first char is consumed to determine type
-  std::uint64_t tmp_consumed = 1;
-
-  ParsingResult result = dispatchParsing(type, it, end, consumed, outValue);
-
-  if (result != ParsingResult::kNeedMoreData) {
-    consumed += tmp_consumed;
-  }
-
-  return result;
-}
-
-template <std::random_access_iterator Iterator>
-ParsingResult RespParserImpl::dispatchParsing(RespValue::Type type, Iterator it,
-                                              Iterator end,
-                                              std::uint64_t& consumed,
-                                              RespValue& outValue) {
-  switch (type) {
-    case RespValue::Type::kSimpleString: {
-      return parseSimpleString(it, end, consumed, outValue);
+  while (!root_ready) {
+    if (pos >= size) {
+      return ParsingResult::kNeedMoreData;
     }
-    case RespValue::Type::kError: {
-      return parseError(it, end, consumed, outValue);
-    }
-    case RespValue::Type::kInteger: {
-      return parseInteger(it, end, consumed, outValue);
-    }
-    case RespValue::Type::kBulkString: {
-      return parseBulkString(it, end, consumed, outValue);
-    }
-    case RespValue::Type::kArray: {
-      return parseArray(it, end, consumed, outValue);
-    }
-    default:
-      break;
-  }
 
-  return ParsingResult::kError;
-}
+    const char type_byte = *(begin + pos);
+    ++pos;
 
-RespValue::Type RespParserImpl::determineType(char type) {
-  switch (type) {
-    case '+':
-      return RespValue::Type::kSimpleString;
-    case '-':
-      return RespValue::Type::kError;
-    case ':':
-      return RespValue::Type::kInteger;
-    case '$':
-      return RespValue::Type::kBulkString;
-    case '*':
-      return RespValue::Type::kArray;
-    default:
-      return RespValue::Type::kUnknown;
-  }
-}
+    switch (type_byte) {
+      case '+':
+      case '-': {
+        const auto line_end = findCrlf(begin, size, pos);
+        if (line_end == std::numeric_limits<std::size_t>::max()) {
+          return ParsingResult::kNeedMoreData;
+        }
 
-template <typename Iterator>
-Iterator RespParserImpl::findCrlf(Iterator it, Iterator end) {
-  for (auto cur = it; cur != end; ++cur) {
-    if (*cur == '\n') {
-      if (cur != it && *(cur - 1) == '\r') {
-        return cur - 1;  // points to '\r'
+        RespValue value;
+        value.type = type_byte == '+' ? RespValue::Type::kSimpleString
+                                      : RespValue::Type::kError;
+        value.data = std::string(begin + pos, begin + line_end);
+        pos = line_end + 2;
+
+        attachValue(std::move(value), stack, root_value, root_ready);
+        break;
       }
-    }
-  }
-  return end;
-}
 
-template <std::random_access_iterator Iterator>
-ParsingResult RespParserImpl::parseSimpleString(Iterator it, Iterator end,
-                                                std::uint64_t& consumed,
-                                                RespValue& outValue) {
-  // CRLF (i.e., \r\n)
-  auto crlf_pos = findCrlf(it, end);
-  if (crlf_pos == end) {
-    return ParsingResult::kNeedMoreData;
-  }
+      case ':': {
+        const auto line_end = findCrlf(begin, size, pos);
+        if (line_end == std::numeric_limits<std::size_t>::max()) {
+          return ParsingResult::kNeedMoreData;
+        }
 
-  std::string data(it, crlf_pos);
+        std::int64_t number = 0;
+        if (!parseInt64Token(begin, pos, line_end, number)) {
+          return ParsingResult::kError;
+        }
 
-  outValue.type = RespValue::Type::kSimpleString;
-  outValue.data = std::move(data);
+        RespValue value;
+        value.type = RespValue::Type::kInteger;
+        value.data = number;
+        pos = line_end + 2;
 
-  consumed += std::distance(it, crlf_pos) + 2;
+        attachValue(std::move(value), stack, root_value, root_ready);
+        break;
+      }
 
-  return ParsingResult::kReady;
-}
+      case '$': {
+        const auto line_end = findCrlf(begin, size, pos);
+        if (line_end == std::numeric_limits<std::size_t>::max()) {
+          return ParsingResult::kNeedMoreData;
+        }
 
-/*
-    $<length>\r\n<data>\r\n
+        std::int64_t bulk_length = 0;
+        if (!parseInt64Token(begin, pos, line_end, bulk_length)) {
+          return ParsingResult::kError;
+        }
 
-    The dollar sign ($) as the first byte.
-    One or more decimal digits (0..9) as the string's length, in bytes, as an unsigned, base-10 value.
-    The CRLF terminator.
-    The data.
-    A final CRLF.
-*/
-template <std::random_access_iterator Iterator>
-ParsingResult RespParserImpl::parseBulkString(Iterator it, Iterator end,
-                                              std::uint64_t& consumed,
-                                              RespValue& outValue) {
-  auto header_crlf = findCrlf(it, end);
-  if (header_crlf == end) {
-    return ParsingResult::kNeedMoreData;
-  }
+        pos = line_end + 2;
 
-  std::string header_data = std::string(it, header_crlf);
-  std::size_t header_size = header_data.size() + 2;
-  std::int64_t length = 0;
+        if (bulk_length == -1) {
+          RespValue value;
+          value.type = RespValue::Type::kNullBulkString;
+          attachValue(std::move(value), stack, root_value, root_ready);
+          break;
+        }
 
-  try {
-    std::size_t pos = 0;
-    length = std::stoll(header_data, &pos);
+        if (bulk_length < 0 ||
+            static_cast<std::uint64_t>(bulk_length) > kMaxBulkSize) {
+          return ParsingResult::kError;
+        }
 
-    if (pos != header_data.size()) {
-      // length is specified incorrectly
-      return ParsingResult::kError;
-    }
-  } catch (...) {
-    return ParsingResult::kError;
-  }
+        const auto data_len = static_cast<std::size_t>(bulk_length);
+        if (size - pos < data_len + 2) {
+          return ParsingResult::kNeedMoreData;
+        }
 
-  // Null Bulk String
-  if (length == -1) {
-    outValue.type = RespValue::Type::kNullBulkString;
-    consumed += header_size;
-    return ParsingResult::kReady;
-  }
+        if (*(begin + pos + data_len) != '\r' ||
+            *(begin + pos + data_len + 1) != '\n') {
+          return ParsingResult::kError;
+        }
 
-  if (length < 0 || static_cast<std::size_t>(length) > kMaxBulkSize) {
-    return ParsingResult::kError;
-  }
+        RespValue value;
+        value.type = RespValue::Type::kBulkString;
+        value.data = std::string(begin + pos, begin + pos + data_len);
+        pos += data_len + 2;
 
-  std::size_t total_needed = header_size + length + 2;
-  if (std::distance(it, end) < static_cast<std::ptrdiff_t>(total_needed)) {
-    return ParsingResult::kNeedMoreData;
-  }
+        attachValue(std::move(value), stack, root_value, root_ready);
+        break;
+      }
 
-  Iterator data_begin = it + header_size;
-  Iterator data_end = data_begin + length;
+      case '*': {
+        const auto line_end = findCrlf(begin, size, pos);
+        if (line_end == std::numeric_limits<std::size_t>::max()) {
+          return ParsingResult::kNeedMoreData;
+        }
 
-  if (*(data_end) != '\r' || *(data_end + 1) != '\n') {
-    return ParsingResult::kError;
-  }
+        std::int64_t array_len = 0;
+        if (!parseInt64Token(begin, pos, line_end, array_len)) {
+          return ParsingResult::kError;
+        }
 
-  outValue.type = RespValue::Type::kBulkString;
-  outValue.data = std::string(data_begin, data_end);
+        pos = line_end + 2;
 
-  consumed += total_needed;
-  return ParsingResult::kReady;
-}
+        if (array_len == -1) {
+          RespValue value;
+          value.type = RespValue::Type::kNullArray;
+          attachValue(std::move(value), stack, root_value, root_ready);
+          break;
+        }
 
-/*
-  :[<+|->]<value>\r\n
+        if (array_len < 0 ||
+            static_cast<std::uint64_t>(array_len) > kMaxArrayLength) {
+          return ParsingResult::kError;
+        }
 
-  The colon (:) as the first byte.
-  An optional plus (+) or minus (-) as the sign.
-  One or more decimal digits (0..9) as the integer's unsigned, base-10 value.
-  The CRLF terminator.
-  For example, :0\r\n and :1000\r\n are integer replies (of zero and one thousand, respectively).
-   */
-template <std::random_access_iterator Iterator>
-ParsingResult RespParserImpl::parseInteger(Iterator it, Iterator end,
-                                           std::uint64_t& consumed,
-                                           RespValue& outValue) {
-  // :[<+|->]<value>\r\n
-  Iterator crlf_pos = findCrlf(it, end);
-  if (crlf_pos == end) {
-    return ParsingResult::kNeedMoreData;
-  }
+        if (array_len == 0) {
+          RespValue value;
+          value.type = RespValue::Type::kArray;
+          value.data = RespValue::RespArray{};
+          attachValue(std::move(value), stack, root_value, root_ready);
+          break;
+        }
 
-  std::string data(it, crlf_pos);
+        if (stack.size() + 1 > kMaxNestingDepth) {
+          return ParsingResult::kError;
+        }
 
-  try {
-    std::size_t pos = 0;
-    std::int64_t value = std::stoll(std::string(data), &pos, 10);
+        ArrayFrame frame;
+        frame.remaining = static_cast<std::size_t>(array_len);
+        frame.elements.reserve(frame.remaining);
+        stack.push_back(std::move(frame));
+        break;
+      }
 
-    if (pos != data.size()) {
-      return ParsingResult::kError;
-    }
-
-    outValue.type = RespValue::Type::kInteger;
-    outValue.data = value;
-
-  } catch (...) {
-    return ParsingResult::kError;
-  }
-
-  consumed += std::distance(it, crlf_pos) + 2;
-
-  return ParsingResult::kReady;
-}
-
-/*
-    *<number-of-elements>\r\n<element-1>...<element-n>
-
-    An asterisk (*) as the first byte.
-    One or more decimal digits (0..9) as the number of elements in the array as an unsigned, base-10 value.
-    The CRLF terminator.
-    An additional RESP type for every element of the array.
-*/
-template <std::random_access_iterator Iterator>
-ParsingResult RespParserImpl::parseArray(Iterator it, Iterator end,
-                                         std::uint64_t& consumed,
-                                         RespValue& outValue) {
-  auto header_crlf = findCrlf(it, end);
-  if (header_crlf == end) {
-    return ParsingResult::kNeedMoreData;
-  }
-
-  std::string header(it, header_crlf);
-  std::size_t number_of_elements = 0;
-
-  try {
-    std::size_t pos = 0;
-    number_of_elements = std::stoll(header, &pos, 10);
-
-    if (pos != header.size()) {
-      return ParsingResult::kError;
-    }
-  } catch (...) {
-    return ParsingResult::kError;
-  }
-
-  outValue.type = RespValue::Type::kArray;
-  std::vector<RespValue> elements;
-  elements.reserve(number_of_elements);
-
-  std::size_t tmp_consumed = std::distance(it, header_crlf) + 2;
-  for (std::size_t i = 0; i < number_of_elements; ++i) {
-    // Not sure if it's good to fill the elements, because there can be error at the end.
-    // And also we go through all the elements every time
-    RespValue tmp;
-    auto result = parseImpl(it + tmp_consumed, end, tmp_consumed, tmp);
-    if (result == ParsingResult::kReady) {
-      elements.push_back(std::move(tmp));
-    } else {
-      return result;
+      default:
+        return ParsingResult::kError;
     }
   }
 
-  outValue.data = std::move(elements);
-  consumed += tmp_consumed;
-
+  consumed = pos;
+  outValue = std::move(root_value);
   return ParsingResult::kReady;
 }
 
 template <std::random_access_iterator Iterator>
-ParsingResult RespParserImpl::parseError(Iterator it, Iterator end,
-                                         std::uint64_t& consumed,
-                                         RespValue& outValue) {
-  auto crlf_pos = findCrlf(it, end);
-  if (crlf_pos == end) {
-    return ParsingResult::kNeedMoreData;
+std::size_t RespParserImpl::findCrlf(Iterator begin, std::size_t size,
+                                     std::size_t start) {
+  if (start >= size) {
+    return std::numeric_limits<std::size_t>::max();
   }
 
-  std::string data(it, crlf_pos);
+  for (std::size_t i = start; i + 1 < size; ++i) {
+    if (*(begin + i) == '\r' && *(begin + i + 1) == '\n') {
+      return i;
+    }
+  }
 
-  outValue.type = RespValue::Type::kError;
-  outValue.data = std::move(data);
+  return std::numeric_limits<std::size_t>::max();
+}
 
-  consumed += std::distance(it, crlf_pos) + 2;
+template <std::random_access_iterator Iterator>
+bool RespParserImpl::parseInt64Token(Iterator begin, std::size_t token_start,
+                                     std::size_t token_end, std::int64_t& out) {
+  if (token_start >= token_end) {
+    return false;
+  }
 
-  return ParsingResult::kReady;
+  std::size_t pos = token_start;
+  bool negative = false;
+
+  const char sign = *(begin + pos);
+  if (sign == '+' || sign == '-') {
+    negative = (sign == '-');
+    ++pos;
+    if (pos >= token_end) {
+      return false;
+    }
+  }
+
+  constexpr auto kInt64Max =
+      static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+  constexpr std::uint64_t kInt64MinAbs = kInt64Max + 1ULL;
+  const std::uint64_t limit = negative ? kInt64MinAbs : kInt64Max;
+
+  std::uint64_t acc = 0;
+  for (; pos < token_end; ++pos) {
+    const char c = *(begin + pos);
+    if (c < '0' || c > '9') {
+      return false;
+    }
+
+    const auto digit = static_cast<std::uint64_t>(c - '0');
+    if (acc > (limit - digit) / 10ULL) {
+      return false;
+    }
+    acc = acc * 10ULL + digit;
+  }
+
+  if (!negative) {
+    out = static_cast<std::int64_t>(acc);
+    return true;
+  }
+
+  if (acc == kInt64MinAbs) {
+    out = std::numeric_limits<std::int64_t>::min();
+    return true;
+  }
+
+  out = -static_cast<std::int64_t>(acc);
+  return true;
+}
+
+void RespParserImpl::attachValue(RespValue value,
+                                 std::vector<ArrayFrame>& stack,
+                                 RespValue& root_value, bool& root_ready) {
+  RespValue current = std::move(value);
+
+  while (true) {
+    if (stack.empty()) {
+      root_value = std::move(current);
+      root_ready = true;
+      return;
+    }
+
+    auto& frame = stack.back();
+    frame.elements.push_back(std::move(current));
+    --frame.remaining;
+
+    if (frame.remaining > 0) {
+      return;
+    }
+
+    current.type = RespValue::Type::kArray;
+    current.data = std::move(frame.elements);
+    stack.pop_back();
+  }
 }
 
 }  // namespace
 
 ParsingResult RespParser::parse(asio::streambuf& buffer, RespValue& outValue) {
   auto data = buffer.data();
-  auto begin = boost::asio::buffers_begin(data);
-  auto end = boost::asio::buffers_end(data);
+  auto begin = asio::buffers_begin(data);
+  auto end = asio::buffers_end(data);
 
   RespValue tmp;
   std::size_t consumed = 0;

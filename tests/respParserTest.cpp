@@ -304,6 +304,34 @@ TEST_F(RespParserTest, ParsesDeeplyNestedArrays) {
   EXPECT_EQ(std::get<std::int64_t>(lvl3[0].data), 7);
 }
 
+TEST_F(RespParserTest, ParsesVeryDeepNestedArraysWithoutRecursion) {
+  constexpr std::size_t kDepth = 2000;
+
+  std::string payload;
+  payload.reserve(kDepth * 4 + 8);
+  for (std::size_t i = 0; i < kDepth; ++i) {
+    payload += "*1\r\n";
+  }
+  payload += ":7\r\n";
+
+  write(buffer_, payload);
+
+  auto result = RespParser::parse(buffer_, value_);
+
+  ASSERT_EQ(result, ParsingResult::kReady);
+
+  const RespValue* current = &value_;
+  for (std::size_t i = 0; i < kDepth; ++i) {
+    ASSERT_EQ(current->type, RespValue::Type::kArray);
+    const auto& elements = std::get<std::vector<RespValue>>(current->data);
+    ASSERT_EQ(elements.size(), 1U);
+    current = elements.data();
+  }
+
+  ASSERT_EQ(current->type, RespValue::Type::kInteger);
+  EXPECT_EQ(std::get<std::int64_t>(current->data), 7);
+}
+
 TEST_F(RespParserTest, IncompleteArrayReturnsNeedMoreData) {
   write(buffer_,
         "*2\r\n"

@@ -5,25 +5,30 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/asio/streambuf.hpp>
+#include <commandExecutor.hpp>
 #include <memory>
+#include "shardPool.hpp"
 
 namespace asio = boost::asio;
 
 namespace tinycache {
 enum class ReadResult { kNewMessage, kCloseConnection, kReadError };
 
-class Session : std::enable_shared_from_this<Session> {
+class Session : public std::enable_shared_from_this<Session> {
  public:
-  explicit Session(asio::ip::tcp::socket socket);
+  explicit Session(asio::ip::tcp::socket socket, ShardPool& shard_pool,
+                   std::size_t home_shard);
   asio::awaitable<void> run();
 
  private:
   asio::ip::tcp::socket socket_;
   asio::streambuf buffer_;
   asio::strand<asio::ip::tcp::socket::executor_type> strand_;
+  CommandExecutor executor_;
+  std::size_t home_shard_;
 
   [[nodiscard]] asio::awaitable<ReadResult> read();
-  asio::awaitable<void> write();
+  asio::awaitable<void> write(std::string message);
 };
 
 }  // namespace tinycache
