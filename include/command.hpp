@@ -18,7 +18,8 @@ enum class CommandType : std::uint8_t {
   kSet,
   kDel,
   kExpire,
-  kTtl
+  kTtl,
+  kConfig
 };
 
 struct Command {
@@ -41,7 +42,8 @@ static constexpr auto kCommands =
                                       {CommandType::kSet, "SET", -3},
                                       {CommandType::kDel, "DEL", -2},
                                       {CommandType::kExpire, "EXPIRE", 3},
-                                      {CommandType::kTtl, "TTL", 2}});
+                                      {CommandType::kTtl, "TTL", 2},
+                                      {CommandType::kConfig, "CONFIG", -2}});
 
 }  // namespace tinycache
 #endif

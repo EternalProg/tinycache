@@ -85,6 +85,18 @@ TEST_F(CommandTest, ParsesTtlCommand) {
   EXPECT_EQ(cmd->args[0], "key");
 }
 
+TEST_F(CommandTest, ParsesConfigGetCommand) {
+  RespValue v = makeArray({bulk("CONFIG"), bulk("GET"), bulk("save")});
+
+  auto cmd = Command::toCommand(v);
+
+  ASSERT_TRUE(cmd.has_value());
+  EXPECT_EQ(cmd->type, CommandType::kConfig);
+  ASSERT_EQ(cmd->args.size(), 2);
+  EXPECT_EQ(cmd->args[0], "GET");
+  EXPECT_EQ(cmd->args[1], "save");
+}
+
 TEST_F(CommandTest, CommandIsCaseInsensitive) {
   RespValue v = makeArray({bulk("gEt"), bulk("key")});
 
@@ -159,6 +171,23 @@ TEST_F(CommandTest, DelWithMultipleKeysIsAccepted) {
 
 TEST_F(CommandTest, ExpireWithoutSecondsReturnsNullopt) {
   RespValue v = makeArray({bulk("EXPIRE"), bulk("key")});
+
+  auto cmd = Command::toCommand(v);
+
+  EXPECT_FALSE(cmd.has_value());
+}
+
+TEST_F(CommandTest, ConfigWithoutPatternReturnsNullopt) {
+  RespValue v = makeArray({bulk("CONFIG"), bulk("GET")});
+
+  auto cmd = Command::toCommand(v);
+
+  EXPECT_FALSE(cmd.has_value());
+}
+
+TEST_F(CommandTest, ConfigWithExtraArgsReturnsNullopt) {
+  RespValue v =
+      makeArray({bulk("CONFIG"), bulk("GET"), bulk("save"), bulk("extra")});
 
   auto cmd = Command::toCommand(v);
 

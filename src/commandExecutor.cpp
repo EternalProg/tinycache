@@ -1,5 +1,6 @@
 #include <spdlog/spdlog.h>
 #include <algorithm>
+#include <array>
 #include <command.hpp>
 #include <commandExecutor.hpp>
 #include <optional>
@@ -175,6 +176,69 @@ RespValue processCommandCommand(Command& cmd) {
   return RespValue(RespValue::Type::kError, "Unknown subcommand");
 }
 
+bool glob_match(std::string_view pattern, std::string_view text) {
+  std::size_t pattern_index = 0;
+  std::size_t text_index = 0;
+  std::size_t star_index = std::string_view::npos;
+  std::size_t star_text_match = 0;
+
+  while (text_index < text.size()) {
+    if (pattern_index < pattern.size() &&
+        (pattern[pattern_index] == '?' ||
+         pattern[pattern_index] == text[text_index])) {
+      ++pattern_index;
+      ++text_index;
+      continue;
+    }
+
+    if (pattern_index < pattern.size() && pattern[pattern_index] == '*') {
+      star_index = pattern_index;
+      star_text_match = text_index;
+      ++pattern_index;
+      continue;
+    }
+
+    if (star_index != std::string_view::npos) {
+      pattern_index = star_index + 1;
+      text_index = ++star_text_match;
+      continue;
+    }
+
+    return false;
+  }
+
+  while (pattern_index < pattern.size() && pattern[pattern_index] == '*') {
+    ++pattern_index;
+  }
+
+  return pattern_index == pattern.size();
+}
+
+RespValue processConfigCommand(Command& cmd) {
+  std::string subcommand = cmd.args[0];
+  to_uppercase(subcommand);
+
+  if (subcommand != "GET") {
+    return RespValue(RespValue::Type::kError, "Unknown subcommand");
+  }
+
+  std::string pattern = cmd.args[1];
+  to_lowercase(pattern);
+
+  static constexpr std::array<std::pair<std::string_view, std::string_view>, 2>
+      kSupportedConfigValues{{{"save", ""}, {"appendonly", "no"}}};
+
+  RespValue::RespArray result;
+  for (const auto& [name, value] : kSupportedConfigValues) {
+    if (glob_match(pattern, name)) {
+      result.emplace_back(RespValue::Type::kBulkString, std::string(name));
+      result.emplace_back(RespValue::Type::kBulkString, std::string(value));
+    }
+  }
+
+  return RespValue(RespValue::Type::kArray, std::move(result));
+}
+
 RespValue processUnknownCommand() {
   spdlog::warn("Unknown command");
   return RespValue(RespValue::Type::kError, "ERR unknown command");
@@ -258,6 +322,8 @@ asio::awaitable<RespValue> CommandExecutor::execute_single_shard(
       co_return processPingCommand(cmd);
     case CommandType::kCommand:
       co_return processCommandCommand(cmd);
+    case CommandType::kConfig:
+      co_return processConfigCommand(cmd);
     case CommandType::kUnknown:
     default:
       co_return processUnknownCommand();
@@ -349,6 +415,8 @@ asio::awaitable<RespValue> CommandExecutor::execute_multi_shard(
       co_return processPingCommand(cmd);
     case CommandType::kCommand:
       co_return processCommandCommand(cmd);
+    case CommandType::kConfig:
+      co_return processConfigCommand(cmd);
     case CommandType::kUnknown:
     default:
       co_return processUnknownCommand();

@@ -33,6 +33,8 @@ CommandType determineCommandType(std::string_view type_sv) {
     return CommandType::kPing;
   if (type_sv == "COMMAND")
     return CommandType::kCommand;
+  if (type_sv == "CONFIG")
+    return CommandType::kConfig;
 
   return CommandType::kUnknown;
 }
@@ -45,10 +47,14 @@ struct CommandSpec {
 constexpr std::size_t kMaxArgs = 10;
 
 const std::unordered_map<CommandType, CommandSpec> kSpecs = {
-    {CommandType::kGet, {1, 1}},           {CommandType::kSet, {2, 4}},
-    {CommandType::kDel, {1, kMaxArgs}},    {CommandType::kExpire, {2, 2}},
-    {CommandType::kTtl, {1, 1}},           {CommandType::kPing, {0, 1}},
-    {CommandType::kCommand, {0, kMaxArgs}}};
+    {CommandType::kGet, {1, 1}},
+    {CommandType::kSet, {2, 4}},
+    {CommandType::kDel, {1, kMaxArgs}},
+    {CommandType::kExpire, {2, 2}},
+    {CommandType::kTtl, {1, 1}},
+    {CommandType::kPing, {0, 1}},
+    {CommandType::kCommand, {0, kMaxArgs}},
+    {CommandType::kConfig, {2, 2}}};
 
 bool validateArgs(CommandType type, std::size_t argc) {
   // Case with unknown command type should be handled in toCommand, so we can assume the type is valid here.
