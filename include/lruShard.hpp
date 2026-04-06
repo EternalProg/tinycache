@@ -1,6 +1,7 @@
 #ifndef TINYCACHE_LRU_SHARD_HPP
 #define TINYCACHE_LRU_SHARD_HPP
 
+#include <boost/unordered/unordered_flat_map.hpp>
 #include <chrono>
 #include <functional>
 #include <list>
@@ -8,7 +9,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 
 namespace tinycache {
 
@@ -40,13 +40,6 @@ struct TransparentKeyEqual {
   }
 };
 
-struct Entry {
-  std::string value;
-  std::optional<TimePoint> expire_at;
-  std::list<Key>::iterator lru_it;
-  std::multimap<TimePoint, Key>::iterator expire_it;
-};
-
 class LruShard {
  public:
   static constexpr std::size_t kDefaultCapacity = 1024;
@@ -74,15 +67,27 @@ class LruShard {
   void remove_expired_keys(TimePoint now);
 
  private:
-  using Map =
-      std::unordered_map<Key, Entry, TransparentKeyHash, TransparentKeyEqual>;
+  struct Node;
+  using LruList = std::list<Node>;
+  using LruIt = LruList::iterator;
+  using ExpireMap = std::multimap<TimePoint, LruIt>;
+
+  struct Node {
+    Key key;
+    std::string value;
+    std::optional<TimePoint> expire_at;
+    ExpireMap::iterator expire_it;
+  };
+
+  using Map = boost::unordered::unordered_flat_map<
+      std::string_view, LruIt, TransparentKeyHash, TransparentKeyEqual>;
 
   void evict_lru();
   void remove_key(Map::iterator it);
 
   Map map_;
-  std::list<Key> lru_list_;
-  std::multimap<TimePoint, Key> expire_map_;
+  LruList lru_list_;
+  ExpireMap expire_map_;
   std::size_t capacity_;
 };
 
