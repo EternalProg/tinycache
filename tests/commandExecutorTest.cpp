@@ -616,6 +616,44 @@ TEST_F(CommandExecutorTest, ConfigUnknownSubcommandReturnsError) {
   EXPECT_EQ(std::get<std::string>(result.data), "Unknown subcommand");
 }
 
+// INFO COMMAND TESTS
+TEST_F(CommandExecutorTest, InfoReturnsMemoryMetrics) {
+  cache_.set("key1", "value1");
+  cache_.set("key2", "value2");
+
+  Command cmd{CommandType::kInfo, {}};
+  RespValue result = executor_.execute(cmd);
+
+  ASSERT_EQ(result.type, RespValue::Type::kBulkString);
+  const auto& info = std::get<std::string>(result.data);
+  EXPECT_NE(info.find("# Memory"), std::string::npos);
+  EXPECT_NE(info.find("used_bytes:"), std::string::npos);
+  EXPECT_NE(info.find("keys:"), std::string::npos);
+  EXPECT_NE(info.find("evictions:"), std::string::npos);
+  EXPECT_NE(info.find("expired:"), std::string::npos);
+  EXPECT_NE(info.find("max_memory_bytes:"), std::string::npos);
+}
+
+TEST_F(CommandExecutorTest, InfoMemorySectionReturnsMemoryMetrics) {
+  cache_.set("key1", "value1");
+
+  Command cmd{CommandType::kInfo, {"memory"}};
+  RespValue result = executor_.execute(cmd);
+
+  ASSERT_EQ(result.type, RespValue::Type::kBulkString);
+  const auto& info = std::get<std::string>(result.data);
+  EXPECT_NE(info.find("# Memory"), std::string::npos);
+  EXPECT_NE(info.find("memory_model:payload_bytes"), std::string::npos);
+}
+
+TEST_F(CommandExecutorTest, InfoUnsupportedSectionReturnsError) {
+  Command cmd{CommandType::kInfo, {"clients"}};
+  RespValue result = executor_.execute(cmd);
+
+  ASSERT_EQ(result.type, RespValue::Type::kError);
+  EXPECT_EQ(std::get<std::string>(result.data), "ERR unsupported INFO section");
+}
+
 // UNKNOWN COMMAND TESTS
 TEST_F(CommandExecutorTest, UnknownCommandReturnsError) {
   Command cmd{CommandType::kUnknown, {}};

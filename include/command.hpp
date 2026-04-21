@@ -19,6 +19,7 @@ enum class CommandType : std::uint8_t {
   kDel,
   kExpire,
   kTtl,
+  kInfo,
   kConfig
 };
 
@@ -43,6 +44,7 @@ static constexpr auto kCommands =
                                       {CommandType::kDel, "DEL", -2},
                                       {CommandType::kExpire, "EXPIRE", 3},
                                       {CommandType::kTtl, "TTL", 2},
+                                      {CommandType::kInfo, "INFO", -1},
                                       {CommandType::kConfig, "CONFIG", -2}});
 
 }  // namespace tinycache

@@ -97,6 +97,27 @@ TEST_F(CommandTest, ParsesConfigGetCommand) {
   EXPECT_EQ(cmd->args[1], "save");
 }
 
+TEST_F(CommandTest, ParsesInfoCommand) {
+  RespValue v = makeArray({bulk("INFO")});
+
+  auto cmd = Command::toCommand(v);
+
+  ASSERT_TRUE(cmd.has_value());
+  EXPECT_EQ(cmd->type, CommandType::kInfo);
+  EXPECT_TRUE(cmd->args.empty());
+}
+
+TEST_F(CommandTest, ParsesInfoMemoryCommand) {
+  RespValue v = makeArray({bulk("INFO"), bulk("memory")});
+
+  auto cmd = Command::toCommand(v);
+
+  ASSERT_TRUE(cmd.has_value());
+  EXPECT_EQ(cmd->type, CommandType::kInfo);
+  ASSERT_EQ(cmd->args.size(), 1);
+  EXPECT_EQ(cmd->args[0], "memory");
+}
+
 TEST_F(CommandTest, CommandIsCaseInsensitive) {
   RespValue v = makeArray({bulk("gEt"), bulk("key")});
 
@@ -188,6 +209,14 @@ TEST_F(CommandTest, ConfigWithoutPatternReturnsNullopt) {
 TEST_F(CommandTest, ConfigWithExtraArgsReturnsNullopt) {
   RespValue v =
       makeArray({bulk("CONFIG"), bulk("GET"), bulk("save"), bulk("extra")});
+
+  auto cmd = Command::toCommand(v);
+
+  EXPECT_FALSE(cmd.has_value());
+}
+
+TEST_F(CommandTest, InfoWithExtraArgsReturnsNullopt) {
+  RespValue v = makeArray({bulk("INFO"), bulk("memory"), bulk("extra")});
 
   auto cmd = Command::toCommand(v);
 

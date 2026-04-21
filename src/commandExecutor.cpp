@@ -239,6 +239,48 @@ RespValue processConfigCommand(Command& cmd) {
   return RespValue(RespValue::Type::kArray, std::move(result));
 }
 
+asio::awaitable<RespValue> processInfoCommand(Command& cmd,
+                                              ShardPool& shard_pool) {
+  std::string section = "DEFAULT";
+  if (!cmd.args.empty()) {
+    section = cmd.args[0];
+    to_uppercase(section);
+  }
+
+  if (section != "DEFAULT" && section != "MEMORY" && section != "ALL") {
+    co_return RespValue(RespValue::Type::kError,
+                        "ERR unsupported INFO section");
+  }
+
+  std::size_t used_bytes = 0;
+  std::size_t keys = 0;
+  std::uint64_t evictions = 0;
+  std::uint64_t expired = 0;
+  std::size_t max_memory_bytes = 0;
+
+  for (std::size_t i = 0; i < shard_pool.size(); ++i) {
+    auto shard_stats = co_await shard_pool.run_on_shard(
+        i, [](LruShard& shard) { return shard.get_stats(); });
+    used_bytes += shard_stats.used_payload_bytes;
+    keys += shard_stats.key_count;
+    evictions += shard_stats.evictions;
+    expired += shard_stats.expired;
+    max_memory_bytes += shard_stats.max_memory_bytes;
+  }
+
+  std::string info;
+  info.reserve(192);
+  info += "# Memory\r\n";
+  info += "used_bytes:" + std::to_string(used_bytes) + "\r\n";
+  info += "keys:" + std::to_string(keys) + "\r\n";
+  info += "evictions:" + std::to_string(evictions) + "\r\n";
+  info += "expired:" + std::to_string(expired) + "\r\n";
+  info += "max_memory_bytes:" + std::to_string(max_memory_bytes) + "\r\n";
+  info += "memory_model:payload_bytes\r\n";
+
+  co_return RespValue(RespValue::Type::kBulkString, std::move(info));
+}
+
 RespValue processUnknownCommand() {
   spdlog::warn("Unknown command");
   return RespValue(RespValue::Type::kError, "ERR unknown command");
@@ -317,6 +359,9 @@ asio::awaitable<RespValue> CommandExecutor::execute_single_shard(
       co_return co_await shard_pool_.run_on_shard(
           kShardIndex,
           [&](LruShard& shard) { return processTtlCommand(cmd, shard); });
+
+    case CommandType::kInfo:
+      co_return co_await processInfoCommand(cmd, shard_pool_);
 
     case CommandType::kPing:
       co_return processPingCommand(cmd);
@@ -411,6 +456,8 @@ asio::awaitable<RespValue> CommandExecutor::execute_multi_shard(
           shard_index,
           [&](LruShard& shard) { return processTtlCommand(cmd, shard); });
     }
+    case CommandType::kInfo:
+      co_return co_await processInfoCommand(cmd, shard_pool_);
     case CommandType::kPing:
       co_return processPingCommand(cmd);
     case CommandType::kCommand:
