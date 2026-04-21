@@ -62,9 +62,9 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated shard counts (default: 1,2,4,8)",
     )
     parser.add_argument(
-        "--max-items",
-        default="512,1024,2048,16384",
-        help="Comma-separated max_items_per_shard values (default: 512,1024,2048,16384)",
+        "--max-memory-mb",
+        default="4,16,64,128",
+        help="Comma-separated total memory budgets in MB (default: 4,16,64,128)",
     )
     parser.add_argument(
         "--modes",
@@ -186,7 +186,7 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
 
     args.shards = parse_csv_ints(args.shards, "shards")
-    args.max_items = parse_csv_ints(args.max_items, "max-items")
+    args.max_memory_mb = parse_csv_ints(args.max_memory_mb, "max-memory-mb")
     args.modes = parse_csv_modes(args.modes)
 
     if args.port <= 0 or args.port > 65535:
@@ -237,10 +237,19 @@ def replace_toml_value(config_text: str, key: str, value: int) -> str:
 
 
 def patch_config(
-    config_path: Path, original_text: str, shard_count: int, max_items: int, port: int
+    config_path: Path,
+    original_text: str,
+    shard_count: int,
+    max_memory_mb: int,
+    port: int,
 ) -> None:
+    bytes_total = max_memory_mb * 1024 * 1024
+    max_memory_bytes_per_shard = max(1, bytes_total // shard_count)
+
     updated = replace_toml_value(original_text, "shard_count", shard_count)
-    updated = replace_toml_value(updated, "max_items_per_shard", max_items)
+    updated = replace_toml_value(
+        updated, "max_memory_bytes_per_shard", max_memory_bytes_per_shard
+    )
     updated = replace_toml_value(updated, "port", port)
     config_path.write_text(updated, encoding="utf-8")
 
@@ -362,7 +371,7 @@ def main() -> None:
         "retry_delay": args.retry_delay,
         "startup_settle": args.startup_settle,
         "shards": args.shards,
-        "max_items_per_shard": args.max_items,
+        "max_memory_mb_total": args.max_memory_mb,
         "modes": args.modes,
         "runs": [],
     }
@@ -378,22 +387,30 @@ def main() -> None:
 
     try:
         for shard_count in args.shards:
-            for max_items in args.max_items:
+            for max_memory_mb in args.max_memory_mb:
                 if interrupted["value"]:
                     raise KeyboardInterrupt
 
-                run_id = f"shards_{shard_count}__items_{max_items}"
+                max_memory_bytes_per_shard = max(
+                    1, (max_memory_mb * 1024 * 1024) // shard_count
+                )
+
+                run_id = f"shards_{shard_count}__memmb_{max_memory_mb}"
                 run_out = out_root / run_id
                 run_out.mkdir(parents=True, exist_ok=True)
                 server_log = run_out / "server.log"
 
                 print(
-                    f"\n=== Config: shard_count={shard_count}, max_items_per_shard={max_items} ===",
+                    f"\n=== Config: shard_count={shard_count}, max_memory_mb_total={max_memory_mb}, max_memory_bytes_per_shard={max_memory_bytes_per_shard} ===",
                     flush=True,
                 )
 
                 patch_config(
-                    config_path, original_config, shard_count, max_items, args.port
+                    config_path,
+                    original_config,
+                    shard_count,
+                    max_memory_mb,
+                    args.port,
                 )
 
                 with server_log.open("w", encoding="utf-8") as log_handle:
@@ -444,7 +461,8 @@ def main() -> None:
                                     "run_id": run_id,
                                     "mode": mode,
                                     "shard_count": shard_count,
-                                    "max_items_per_shard": max_items,
+                                    "max_memory_mb_total": max_memory_mb,
+                                    "max_memory_bytes_per_shard": max_memory_bytes_per_shard,
                                     "out_dir": str(run_out),
                                 }
                             )
