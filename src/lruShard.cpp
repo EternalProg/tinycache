@@ -16,12 +16,18 @@ bool is_expired(const std::optional<TimePoint>& expire_at) {
 
 }  // namespace
 
-void LruShard::remove_key(LruShard::Map::iterator it) {
+std::size_t LruShard::payload_bytes(const Node& node) {
+  return node.key.size() + node.value.size();
+}
+
+void LruShard::remove_key(Map::iterator it, RemovalReason reason) {
   if (it == map_.end()) {
     return;
   }
 
   auto node_it = it->second;
+  const std::size_t removed_payload_bytes = payload_bytes(*node_it);
+
   if (node_it->expire_it != expire_map_.end()) {
     expire_map_.erase(node_it->expire_it);
     node_it->expire_it = expire_map_.end();
@@ -29,6 +35,24 @@ void LruShard::remove_key(LruShard::Map::iterator it) {
 
   map_.erase(it);
   lru_list_.erase(node_it);
+
+  if (used_payload_bytes_ >= removed_payload_bytes) {
+    used_payload_bytes_ -= removed_payload_bytes;
+  } else {
+    used_payload_bytes_ = 0;
+  }
+
+  if (reason == RemovalReason::kEviction) {
+    ++evictions_;
+  } else if (reason == RemovalReason::kExpired) {
+    ++expired_;
+  }
+}
+
+void LruShard::enforce_max_memory() {
+  while (used_payload_bytes_ > max_memory_bytes_ && !lru_list_.empty()) {
+    evict_lru();
+  }
 }
 
 std::optional<std::string> LruShard::get(std::string_view key) {
@@ -40,7 +64,7 @@ std::optional<std::string> LruShard::get(std::string_view key) {
   auto node_it = it->second;
   Node& node = *node_it;
   if (is_expired(node.expire_at)) {
-    remove_key(it);
+    remove_key(it, RemovalReason::kExpired);
     return std::nullopt;
   }
 
@@ -59,7 +83,20 @@ void LruShard::set(std::string_view key, std::string_view value,
   if (it != map_.end()) {
     auto node_it = it->second;
     Node& node = *node_it;
+
+    const std::size_t old_payload = payload_bytes(node);
     node.value.assign(value.data(), value.size());
+    const std::size_t new_payload = payload_bytes(node);
+    if (new_payload >= old_payload) {
+      used_payload_bytes_ += (new_payload - old_payload);
+    } else {
+      const auto diff = old_payload - new_payload;
+      if (used_payload_bytes_ >= diff) {
+        used_payload_bytes_ -= diff;
+      } else {
+        used_payload_bytes_ = 0;
+      }
+    }
 
     if (node.expire_it != expire_map_.end()) {
       expire_map_.erase(node.expire_it);
@@ -73,28 +110,36 @@ void LruShard::set(std::string_view key, std::string_view value,
     node.expire_at = expire_at;
 
     lru_list_.splice(lru_list_.begin(), lru_list_, node_it);
+    enforce_max_memory();
     return;
-  }
-
-  if (map_.size() >= capacity_) {
-    evict_lru();
   }
 
   lru_list_.push_front(
       Node{Key(key), std::string(value), expire_at, expire_map_.end()});
   auto node_it = lru_list_.begin();
   map_.emplace(std::string_view{node_it->key}, node_it);
+  used_payload_bytes_ += payload_bytes(*node_it);
 
   if (expire_at.has_value()) {
     node_it->expire_it = expire_map_.emplace(*expire_at, node_it);
   }
+
+  enforce_max_memory();
 }
 
 bool LruShard::del(std::string_view key) {
   auto it = map_.find(key);
   bool existed = it != map_.end();
-  remove_key(it);
+  remove_key(it, RemovalReason::kDelete);
   return existed;
+}
+
+LruShard::Stats LruShard::get_stats() const {
+  return Stats{.used_payload_bytes = used_payload_bytes_,
+               .key_count = map_.size(),
+               .evictions = evictions_,
+               .expired = expired_,
+               .max_memory_bytes = max_memory_bytes_};
 }
 
 bool LruShard::expire(std::string_view key, std::size_t seconds) {
@@ -127,7 +172,7 @@ std::int64_t LruShard::ttl(std::string_view key) {
   auto node_it = it->second;
   Node& node = *node_it;
   if (is_expired(node.expire_at)) {
-    remove_key(it);
+    remove_key(it, RemovalReason::kExpired);
     return -2;
   }
 
@@ -148,17 +193,12 @@ void LruShard::remove_expired_keys(TimePoint now) {
     auto node_it = it->second;
     it = expire_map_.erase(it);
 
-    if (node_it == lru_list_.end()) {
-      continue;
-    }
-
     SPDLOG_DEBUG("Removing expired key: {}", node_it->key);
     node_it->expire_it = expire_map_.end();
 
     auto map_it = map_.find(node_it->key);
     if (map_it != map_.end()) {
-      map_.erase(map_it);
-      lru_list_.erase(node_it);
+      remove_key(map_it, RemovalReason::kExpired);
     }
   }
 }
@@ -178,15 +218,12 @@ void LruShard::evict_lru() {
   auto lru_it = lru_list_.end();
   --lru_it;
 
-  if (lru_it->expire_it != expire_map_.end()) {
-    expire_map_.erase(lru_it->expire_it);
-    lru_it->expire_it = expire_map_.end();
-  }
-
   auto map_it = map_.find(lru_it->key);
   if (map_it != map_.end()) {
-    map_.erase(map_it);
+    remove_key(map_it, RemovalReason::kEviction);
+    return;
   }
+
   lru_list_.erase(lru_it);
 }
 

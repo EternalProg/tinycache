@@ -11,7 +11,7 @@ struct Config {
   std::string host = "0.0.0.0";
   std::uint16_t port = 8080;
   std::size_t max_message_size = 1024;
-  std::uint16_t max_items_per_shard = 1024;
+  std::uint64_t max_memory_bytes_per_shard = 1024;
   std::uint16_t shard_count = 1;
   bool thread_affinity_enabled = false;
 };

@@ -21,7 +21,7 @@ namespace tinycache {
 
 class ShardPool {
  public:
-  ShardPool(std::size_t shard_count, std::size_t shard_capacity,
+  ShardPool(std::size_t shard_count, std::size_t max_memory_bytes_per_shard,
             bool thread_affinity_enabled);
   ~ShardPool();
 
@@ -62,7 +62,7 @@ class ShardPool {
     std::thread thread;
     std::thread::id thread_id;
 
-    explicit Worker(std::size_t capacity);
+    explicit Worker(std::size_t max_memory_bytes);
   };
 
   std::deque<Worker> workers_;

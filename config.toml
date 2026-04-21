@@ -4,7 +4,7 @@ port = 8080
 thread_affinity_enabled = true
 max_message_size = 1024 # in bytes
 [cache]
-max_items_per_shard = 1024
-# max items per shard, total capacity = max_items_per_shard * shard_count
+max_memory_bytes_per_shard = 1024
+# max payload bytes per shard, total budget = max_memory_bytes_per_shard * shard_count
 shard_count = 1
 # min 1

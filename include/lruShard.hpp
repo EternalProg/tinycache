@@ -3,6 +3,7 @@
 
 #include <boost/unordered/unordered_flat_map.hpp>
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <list>
 #include <map>
@@ -42,12 +43,21 @@ struct TransparentKeyEqual {
 
 class LruShard {
  public:
-  static constexpr std::size_t kDefaultCapacity = 1024;
+  static constexpr std::size_t kDefaultMaxMemoryBytes = 1024;
 
-  explicit LruShard(std::size_t capacity = kDefaultCapacity)
-      : capacity_(capacity) {
+  struct Stats {
+    std::size_t used_payload_bytes = 0;
+    std::size_t key_count = 0;
+    std::uint64_t evictions = 0;
+    std::uint64_t expired = 0;
+    std::size_t max_memory_bytes = 0;
+  };
+
+  explicit LruShard(std::size_t max_memory_bytes = kDefaultMaxMemoryBytes)
+      : max_memory_bytes_(max_memory_bytes) {
     map_.max_load_factor(0.80F);
-    map_.reserve(capacity_);
+    const std::size_t estimated_entries = max_memory_bytes_ / 32;
+    map_.reserve(estimated_entries < 64 ? 64 : estimated_entries);
   }
 
   [[nodiscard]] std::optional<std::string> get(std::string_view key);
@@ -62,6 +72,8 @@ class LruShard {
   [[nodiscard]] std::int64_t ttl(std::string_view key);
 
   [[nodiscard]] bool del(std::string_view key);
+
+  [[nodiscard]] Stats get_stats() const;
 
   [[nodiscard]] std::optional<TimePoint> get_next_expire_time();
   void remove_expired_keys(TimePoint now);
@@ -82,13 +94,24 @@ class LruShard {
   using Map = boost::unordered::unordered_flat_map<
       std::string_view, LruIt, TransparentKeyHash, TransparentKeyEqual>;
 
+  enum class RemovalReason : std::uint8_t {
+    kDelete,
+    kEviction,
+    kExpired,
+  };
+
+  [[nodiscard]] static std::size_t payload_bytes(const Node& node);
+  void enforce_max_memory();
   void evict_lru();
-  void remove_key(Map::iterator it);
+  void remove_key(Map::iterator it, RemovalReason reason);
 
   Map map_;
   LruList lru_list_;
   ExpireMap expire_map_;
-  std::size_t capacity_;
+  std::size_t max_memory_bytes_;
+  std::size_t used_payload_bytes_ = 0;
+  std::uint64_t evictions_ = 0;
+  std::uint64_t expired_ = 0;
 };
 
 }  // namespace tinycache
