@@ -5,6 +5,7 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <config.hpp>
+#include <cstddef>
 #include "shardPool.hpp"
 
 namespace asio = boost::asio;
@@ -19,6 +20,7 @@ class Server {
   ShardPool shard_pool_;
   asio::io_context io_context_;
   asio::ip::tcp::acceptor acceptor_;
+  std::size_t max_message_size_ = 1024;
   std::size_t next_shard_ = 0;
 
   asio::awaitable<void> listener();

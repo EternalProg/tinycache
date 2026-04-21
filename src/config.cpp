@@ -12,6 +12,13 @@ Config get_config() {
   config.thread_affinity_enabled =
       toml_config["server"]["thread_affinity_enabled"].value_or(false);
 
+  std::int64_t max_message_size =
+      toml_config["server"]["max_message_size"].value_or(1024);
+  if (max_message_size <= 0) {
+    max_message_size = 1024;
+  }
+  config.max_message_size = static_cast<std::size_t>(max_message_size);
+
   config.max_items_per_shard =
       toml_config["cache"]["max_items_per_shard"].value_or(1024);
 
@@ -22,9 +29,10 @@ Config get_config() {
   config.shard_count = shard_count;
 
   SPDLOG_DEBUG(
-      "Configuration loaded: host={}, port={}, max_items={}, shard_count={}, "
-      "thread_affinity={}",
-      config.host, config.port, config.max_items_per_shard, config.shard_count,
+      "Configuration loaded: host={}, port={}, max_message_size={}, "
+      "max_items={}, shard_count={}, thread_affinity={}",
+      config.host, config.port, config.max_message_size,
+      config.max_items_per_shard, config.shard_count,
       config.thread_affinity_enabled);
 
   return config;
