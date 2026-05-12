@@ -10,6 +10,7 @@ namespace tinycache {
 
 Server::Server(Config& config)
     : shard_pool_(config.shard_count, config.max_memory_bytes_per_shard,
+                  config.preallocated_map_capacity_per_shard,
                   config.thread_affinity_enabled),
       acceptor_(io_context_),
       max_message_size_(config.max_message_size),

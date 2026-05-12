@@ -25,18 +25,21 @@ void pin_thread_to_core(unsigned int core) {
 
 }  // namespace
 
-ShardPool::Worker::Worker(std::size_t max_memory_bytes)
+ShardPool::Worker::Worker(std::size_t max_memory_bytes,
+                          std::size_t preallocated_map_capacity_per_shard)
     : work_guard(asio::make_work_guard(io_context)),
-      shard(max_memory_bytes),
+      shard(max_memory_bytes, preallocated_map_capacity_per_shard),
       expiration(shard) {}
 
 ShardPool::ShardPool(std::size_t shard_count,
                      std::size_t max_memory_bytes_per_shard,
+                     std::size_t preallocated_map_capacity_per_shard,
                      bool thread_affinity_enabled)
     : thread_affinity_enabled_(thread_affinity_enabled) {
   auto count = std::max<std::size_t>(1, shard_count);
   for (std::size_t i = 0; i < count; ++i) {
-    workers_.emplace_back(max_memory_bytes_per_shard);
+    workers_.emplace_back(max_memory_bytes_per_shard,
+                          preallocated_map_capacity_per_shard);
   }
 }
 

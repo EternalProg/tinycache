@@ -53,11 +53,13 @@ class LruShard {
     std::size_t max_memory_bytes = 0;
   };
 
-  explicit LruShard(std::size_t max_memory_bytes = kDefaultMaxMemoryBytes)
+  explicit LruShard(std::size_t max_memory_bytes = kDefaultMaxMemoryBytes,
+                    std::size_t preallocated_map_capacity = 0)
       : max_memory_bytes_(max_memory_bytes) {
     map_.max_load_factor(0.80F);
-    const std::size_t estimated_entries = max_memory_bytes_ / 32;
-    map_.reserve(estimated_entries < 64 ? 64 : estimated_entries);
+    if (preallocated_map_capacity > 0) {
+      map_.reserve(preallocated_map_capacity);
+    }
   }
 
   [[nodiscard]] std::optional<std::string> get(std::string_view key);

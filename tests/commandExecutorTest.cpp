@@ -50,7 +50,7 @@ class CommandExecutorTest : public ::testing::Test {
   };
 
   CommandExecutorTest()
-      : shard_pool_(1, 100, false),
+      : shard_pool_(1, 100, 0, false),
         executor_impl_(shard_pool_),
         executor_({*this}),
         cache_({*this}) {
