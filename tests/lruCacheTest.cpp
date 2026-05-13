@@ -71,7 +71,7 @@ TEST_F(LruShardTest, DeleteOneKeyDoesNotAffectOthers) {
 
 // LRU Eviction tests
 TEST_F(LruShardTest, EvictsLeastRecentlyUsedWhenFull) {
-  LruShard small_cache{3};  // Capacity of 3
+  LruShard small_cache{30};  // 3 entries * (key4 + value6) payload bytes
 
   small_cache.set("key1", "value1");
   small_cache.set("key2", "value2");
@@ -87,7 +87,7 @@ TEST_F(LruShardTest, EvictsLeastRecentlyUsedWhenFull) {
 }
 
 TEST_F(LruShardTest, AccessingKeyMovesItToFront) {
-  LruShard small_cache{3};
+  LruShard small_cache{30};
 
   small_cache.set("key1", "value1");
   small_cache.set("key2", "value2");
@@ -107,7 +107,7 @@ TEST_F(LruShardTest, AccessingKeyMovesItToFront) {
 }
 
 TEST_F(LruShardTest, UpdatingKeyMovesItToFront) {
-  LruShard small_cache{3};
+  LruShard small_cache{40};
 
   small_cache.set("key1", "value1");
   small_cache.set("key2", "value2");
@@ -127,7 +127,7 @@ TEST_F(LruShardTest, UpdatingKeyMovesItToFront) {
 }
 
 TEST_F(LruShardTest, MultipleEvictionsWithAccess) {
-  LruShard small_cache{3};
+  LruShard small_cache{30};
 
   small_cache.set("key1", "value1");
   small_cache.set("key2", "value2");
@@ -241,10 +241,11 @@ TEST_F(LruShardTest, StoresEmptyKey) {
 }
 
 TEST_F(LruShardTest, StoresLargeValues) {
+  LruShard large_cache{20000};
   std::string large_value(10000, 'x');
-  cache_.set("key1", large_value);
+  large_cache.set("key1", large_value);
 
-  auto result = cache_.get("key1");
+  auto result = large_cache.get("key1");
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), large_value);
   EXPECT_EQ(result.value().size(), 10000);
@@ -262,7 +263,7 @@ TEST_F(LruShardTest, StoresSpecialCharacters) {
 // Default capacity tests
 TEST_F(LruShardTest, DefaultCapacityIs1024) {
   LruShard default_cache;
-  EXPECT_EQ(default_cache.kDefaultCapacity, 1024);
+  EXPECT_EQ(default_cache.kDefaultMaxMemoryBytes, 1024);
 
   // Fill cache beyond reasonable test limits (just verify it doesn't crash)
   for (int i = 0; i < 100; ++i) {
@@ -275,7 +276,7 @@ TEST_F(LruShardTest, DefaultCapacityIs1024) {
 
 // Boundary tests
 TEST_F(LruShardTest, CapacityOfOne) {
-  LruShard tiny_cache{1};
+  LruShard tiny_cache{10};
 
   tiny_cache.set("key1", "value1");
   EXPECT_TRUE(tiny_cache.get("key1").has_value());
@@ -314,7 +315,7 @@ TEST_F(LruShardTest, AccessAfterExpiration) {
 
 // Mix of operations
 TEST_F(LruShardTest, ComplexMixOfOperations) {
-  LruShard small_cache{4};
+  LruShard small_cache{40};
 
   // Set 4 items
   small_cache.set("key1", "value1");
@@ -389,4 +390,32 @@ TEST_F(LruShardTest, GetNextExpireTimeReturnsEarliestExpiration) {
 TEST_F(LruShardTest, GetNextExpireTimeReturnsNulloptWhenEmpty) {
   auto next_expire = cache_.get_next_expire_time();
   EXPECT_FALSE(next_expire.has_value());
+}
+
+TEST_F(LruShardTest, PayloadStatsTrackUsedBytesAndKeys) {
+  LruShard stats_cache{100};
+
+  stats_cache.set("a", "1234");  // payload 5
+  stats_cache.set("bb", "12");   // payload 4
+
+  auto stats = stats_cache.get_stats();
+  EXPECT_EQ(stats.used_payload_bytes, 9U);
+  EXPECT_EQ(stats.key_count, 2U);
+  EXPECT_EQ(stats.max_memory_bytes, 100U);
+}
+
+TEST_F(LruShardTest, StatsTrackEvictionsAndExpired) {
+  LruShard stats_cache{10};
+
+  stats_cache.set("k1", "value1");
+  stats_cache.set("k2", "value2");
+  auto after_eviction = stats_cache.get_stats();
+  EXPECT_EQ(after_eviction.evictions, 1U);
+
+  stats_cache.set("e", "x");
+  stats_cache.expire("e", 1);
+  stats_cache.remove_expired_keys(std::chrono::steady_clock::now() +
+                                  std::chrono::seconds(2));
+  auto after_expire = stats_cache.get_stats();
+  EXPECT_EQ(after_expire.expired, 1U);
 }

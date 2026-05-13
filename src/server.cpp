@@ -9,9 +9,11 @@
 namespace tinycache {
 
 Server::Server(Config& config)
-    : shard_pool_(config.shard_count, config.max_items_per_shard,
+    : shard_pool_(config.shard_count, config.max_memory_bytes_per_shard,
+                  config.preallocated_map_capacity_per_shard,
                   config.thread_affinity_enabled),
       acceptor_(io_context_),
+      max_message_size_(config.max_message_size),
       signals_(io_context_, SIGINT, SIGTERM) {
 
   auto addr = asio::ip::make_address(config.host);  // e.g. "0.0.0.0"
@@ -52,8 +54,8 @@ asio::awaitable<void> Server::listener() {
     }
     spdlog::info("New Connection");
 
-    auto session =
-        std::make_shared<Session>(std::move(socket), shard_pool_, shard_index);
+    auto session = std::make_shared<Session>(std::move(socket), shard_pool_,
+                                             shard_index, max_message_size_);
 
     co_spawn(
         shard_pool_.executor_for(shard_index),

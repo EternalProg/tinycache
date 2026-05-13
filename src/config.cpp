@@ -12,8 +12,28 @@ Config get_config() {
   config.thread_affinity_enabled =
       toml_config["server"]["thread_affinity_enabled"].value_or(false);
 
-  config.max_items_per_shard =
-      toml_config["cache"]["max_items_per_shard"].value_or(1024);
+  std::int64_t max_message_size =
+      toml_config["server"]["max_message_size"].value_or(1024);
+  if (max_message_size <= 0) {
+    max_message_size = 1024;
+  }
+  config.max_message_size = static_cast<std::size_t>(max_message_size);
+
+  std::int64_t max_memory_bytes_per_shard =
+      toml_config["cache"]["max_memory_bytes_per_shard"].value_or(1024);
+  if (max_memory_bytes_per_shard <= 0) {
+    max_memory_bytes_per_shard = 1024;
+  }
+  config.max_memory_bytes_per_shard =
+      static_cast<std::uint64_t>(max_memory_bytes_per_shard);
+
+  std::int64_t preallocated_map_capacity_per_shard =
+      toml_config["cache"]["preallocated_map_capacity_per_shard"].value_or(0);
+  if (preallocated_map_capacity_per_shard < 0) {
+    preallocated_map_capacity_per_shard = 0;
+  }
+  config.preallocated_map_capacity_per_shard =
+      static_cast<std::size_t>(preallocated_map_capacity_per_shard);
 
   std::int32_t shard_count = toml_config["cache"]["shard_count"].value_or(1);
   if (shard_count <= 0) {
@@ -22,9 +42,12 @@ Config get_config() {
   config.shard_count = shard_count;
 
   SPDLOG_DEBUG(
-      "Configuration loaded: host={}, port={}, max_items={}, shard_count={}, "
-      "thread_affinity={}",
-      config.host, config.port, config.max_items_per_shard, config.shard_count,
+      "Configuration loaded: host={}, port={}, max_message_size={}, "
+      "max_memory_bytes_per_shard={}, preallocated_map_capacity_per_shard={}, "
+      "shard_count={}, thread_affinity={}",
+      config.host, config.port, config.max_message_size,
+      config.max_memory_bytes_per_shard,
+      config.preallocated_map_capacity_per_shard, config.shard_count,
       config.thread_affinity_enabled);
 
   return config;

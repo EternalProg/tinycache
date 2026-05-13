@@ -1,5 +1,6 @@
 #include <spdlog/spdlog.h>
 #include <algorithm>
+#include <array>
 #include <command.hpp>
 #include <commandExecutor.hpp>
 #include <optional>
@@ -175,6 +176,111 @@ RespValue processCommandCommand(Command& cmd) {
   return RespValue(RespValue::Type::kError, "Unknown subcommand");
 }
 
+bool glob_match(std::string_view pattern, std::string_view text) {
+  std::size_t pattern_index = 0;
+  std::size_t text_index = 0;
+  std::size_t star_index = std::string_view::npos;
+  std::size_t star_text_match = 0;
+
+  while (text_index < text.size()) {
+    if (pattern_index < pattern.size() &&
+        (pattern[pattern_index] == '?' ||
+         pattern[pattern_index] == text[text_index])) {
+      ++pattern_index;
+      ++text_index;
+      continue;
+    }
+
+    if (pattern_index < pattern.size() && pattern[pattern_index] == '*') {
+      star_index = pattern_index;
+      star_text_match = text_index;
+      ++pattern_index;
+      continue;
+    }
+
+    if (star_index != std::string_view::npos) {
+      pattern_index = star_index + 1;
+      text_index = ++star_text_match;
+      continue;
+    }
+
+    return false;
+  }
+
+  while (pattern_index < pattern.size() && pattern[pattern_index] == '*') {
+    ++pattern_index;
+  }
+
+  return pattern_index == pattern.size();
+}
+
+RespValue processConfigCommand(Command& cmd) {
+  std::string subcommand = cmd.args[0];
+  to_uppercase(subcommand);
+
+  if (subcommand != "GET") {
+    return RespValue(RespValue::Type::kError, "Unknown subcommand");
+  }
+
+  std::string pattern = cmd.args[1];
+  to_lowercase(pattern);
+
+  static constexpr std::array<std::pair<std::string_view, std::string_view>, 2>
+      kSupportedConfigValues{{{"save", ""}, {"appendonly", "no"}}};
+
+  RespValue::RespArray result;
+  for (const auto& [name, value] : kSupportedConfigValues) {
+    if (glob_match(pattern, name)) {
+      result.emplace_back(RespValue::Type::kBulkString, std::string(name));
+      result.emplace_back(RespValue::Type::kBulkString, std::string(value));
+    }
+  }
+
+  return RespValue(RespValue::Type::kArray, std::move(result));
+}
+
+asio::awaitable<RespValue> processInfoCommand(Command& cmd,
+                                              ShardPool& shard_pool) {
+  std::string section = "DEFAULT";
+  if (!cmd.args.empty()) {
+    section = cmd.args[0];
+    to_uppercase(section);
+  }
+
+  if (section != "DEFAULT" && section != "MEMORY" && section != "ALL") {
+    co_return RespValue(RespValue::Type::kError,
+                        "ERR unsupported INFO section");
+  }
+
+  std::size_t used_bytes = 0;
+  std::size_t keys = 0;
+  std::uint64_t evictions = 0;
+  std::uint64_t expired = 0;
+  std::size_t max_memory_bytes = 0;
+
+  for (std::size_t i = 0; i < shard_pool.size(); ++i) {
+    auto shard_stats = co_await shard_pool.run_on_shard(
+        i, [](LruShard& shard) { return shard.get_stats(); });
+    used_bytes += shard_stats.used_payload_bytes;
+    keys += shard_stats.key_count;
+    evictions += shard_stats.evictions;
+    expired += shard_stats.expired;
+    max_memory_bytes += shard_stats.max_memory_bytes;
+  }
+
+  std::string info;
+  info.reserve(192);
+  info += "# Memory\r\n";
+  info += "used_bytes:" + std::to_string(used_bytes) + "\r\n";
+  info += "keys:" + std::to_string(keys) + "\r\n";
+  info += "evictions:" + std::to_string(evictions) + "\r\n";
+  info += "expired:" + std::to_string(expired) + "\r\n";
+  info += "max_memory_bytes:" + std::to_string(max_memory_bytes) + "\r\n";
+  info += "memory_model:payload_bytes\r\n";
+
+  co_return RespValue(RespValue::Type::kBulkString, std::move(info));
+}
+
 RespValue processUnknownCommand() {
   spdlog::warn("Unknown command");
   return RespValue(RespValue::Type::kError, "ERR unknown command");
@@ -254,10 +360,15 @@ asio::awaitable<RespValue> CommandExecutor::execute_single_shard(
           kShardIndex,
           [&](LruShard& shard) { return processTtlCommand(cmd, shard); });
 
+    case CommandType::kInfo:
+      co_return co_await processInfoCommand(cmd, shard_pool_);
+
     case CommandType::kPing:
       co_return processPingCommand(cmd);
     case CommandType::kCommand:
       co_return processCommandCommand(cmd);
+    case CommandType::kConfig:
+      co_return processConfigCommand(cmd);
     case CommandType::kUnknown:
     default:
       co_return processUnknownCommand();
@@ -345,10 +456,14 @@ asio::awaitable<RespValue> CommandExecutor::execute_multi_shard(
           shard_index,
           [&](LruShard& shard) { return processTtlCommand(cmd, shard); });
     }
+    case CommandType::kInfo:
+      co_return co_await processInfoCommand(cmd, shard_pool_);
     case CommandType::kPing:
       co_return processPingCommand(cmd);
     case CommandType::kCommand:
       co_return processCommandCommand(cmd);
+    case CommandType::kConfig:
+      co_return processConfigCommand(cmd);
     case CommandType::kUnknown:
     default:
       co_return processUnknownCommand();

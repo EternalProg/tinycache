@@ -2,10 +2,11 @@
 host = "0.0.0.0"
 port = 8080
 thread_affinity_enabled = true
+max_message_size = 1024 # in bytes
 [cache]
-max_items_per_shard = 1024
-# max items per shard, total capacity = max_items_per_shard * shard_count
-default_ttl_seconds = 0
-# 0 = no default TTL
+max_memory_bytes_per_shard = 4096
+# max payload bytes per shard, total budget = max_memory_bytes_per_shard * shard_count
+preallocated_map_capacity_per_shard = 0
+# flat map reserve entries per shard (0 disables reserve)
 shard_count = 1
 # min 1

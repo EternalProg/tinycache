@@ -50,7 +50,7 @@ class CommandExecutorTest : public ::testing::Test {
   };
 
   CommandExecutorTest()
-      : shard_pool_(1, 100, false),
+      : shard_pool_(1, 100, 0, false),
         executor_impl_(shard_pool_),
         executor_({*this}),
         cache_({*this}) {
@@ -552,6 +552,106 @@ TEST_F(CommandExecutorTest, CommandUnknownSubcommandReturnsError) {
 
   EXPECT_EQ(result.type, RespValue::Type::kError);
   EXPECT_EQ(std::get<std::string>(result.data), "Unknown subcommand");
+}
+
+// CONFIG COMMAND TESTS
+TEST_F(CommandExecutorTest, ConfigGetSaveReturnsExpectedPair) {
+  Command cmd{CommandType::kConfig, {"GET", "save"}};
+
+  RespValue result = executor_.execute(cmd);
+
+  ASSERT_EQ(result.type, RespValue::Type::kArray);
+  const auto& values = std::get<RespValue::RespArray>(result.data);
+  ASSERT_EQ(values.size(), 2);
+  EXPECT_EQ(values[0].type, RespValue::Type::kBulkString);
+  EXPECT_EQ(std::get<std::string>(values[0].data), "save");
+  EXPECT_EQ(values[1].type, RespValue::Type::kBulkString);
+  EXPECT_EQ(std::get<std::string>(values[1].data), "");
+}
+
+TEST_F(CommandExecutorTest, ConfigGetAppendonlyReturnsExpectedPair) {
+  Command cmd{CommandType::kConfig, {"GET", "appendonly"}};
+
+  RespValue result = executor_.execute(cmd);
+
+  ASSERT_EQ(result.type, RespValue::Type::kArray);
+  const auto& values = std::get<RespValue::RespArray>(result.data);
+  ASSERT_EQ(values.size(), 2);
+  EXPECT_EQ(values[0].type, RespValue::Type::kBulkString);
+  EXPECT_EQ(std::get<std::string>(values[0].data), "appendonly");
+  EXPECT_EQ(values[1].type, RespValue::Type::kBulkString);
+  EXPECT_EQ(std::get<std::string>(values[1].data), "no");
+}
+
+TEST_F(CommandExecutorTest, ConfigGetWildcardReturnsAllSupportedValues) {
+  Command cmd{CommandType::kConfig, {"GET", "*"}};
+
+  RespValue result = executor_.execute(cmd);
+
+  ASSERT_EQ(result.type, RespValue::Type::kArray);
+  const auto& values = std::get<RespValue::RespArray>(result.data);
+  ASSERT_EQ(values.size(), 4);
+
+  EXPECT_EQ(std::get<std::string>(values[0].data), "save");
+  EXPECT_EQ(std::get<std::string>(values[1].data), "");
+  EXPECT_EQ(std::get<std::string>(values[2].data), "appendonly");
+  EXPECT_EQ(std::get<std::string>(values[3].data), "no");
+}
+
+TEST_F(CommandExecutorTest, ConfigGetUnknownPatternReturnsEmptyArray) {
+  Command cmd{CommandType::kConfig, {"GET", "nonexistent"}};
+
+  RespValue result = executor_.execute(cmd);
+
+  ASSERT_EQ(result.type, RespValue::Type::kArray);
+  EXPECT_TRUE(std::get<RespValue::RespArray>(result.data).empty());
+}
+
+TEST_F(CommandExecutorTest, ConfigUnknownSubcommandReturnsError) {
+  Command cmd{CommandType::kConfig, {"SET", "appendonly"}};
+
+  RespValue result = executor_.execute(cmd);
+
+  EXPECT_EQ(result.type, RespValue::Type::kError);
+  EXPECT_EQ(std::get<std::string>(result.data), "Unknown subcommand");
+}
+
+// INFO COMMAND TESTS
+TEST_F(CommandExecutorTest, InfoReturnsMemoryMetrics) {
+  cache_.set("key1", "value1");
+  cache_.set("key2", "value2");
+
+  Command cmd{CommandType::kInfo, {}};
+  RespValue result = executor_.execute(cmd);
+
+  ASSERT_EQ(result.type, RespValue::Type::kBulkString);
+  const auto& info = std::get<std::string>(result.data);
+  EXPECT_NE(info.find("# Memory"), std::string::npos);
+  EXPECT_NE(info.find("used_bytes:"), std::string::npos);
+  EXPECT_NE(info.find("keys:"), std::string::npos);
+  EXPECT_NE(info.find("evictions:"), std::string::npos);
+  EXPECT_NE(info.find("expired:"), std::string::npos);
+  EXPECT_NE(info.find("max_memory_bytes:"), std::string::npos);
+}
+
+TEST_F(CommandExecutorTest, InfoMemorySectionReturnsMemoryMetrics) {
+  cache_.set("key1", "value1");
+
+  Command cmd{CommandType::kInfo, {"memory"}};
+  RespValue result = executor_.execute(cmd);
+
+  ASSERT_EQ(result.type, RespValue::Type::kBulkString);
+  const auto& info = std::get<std::string>(result.data);
+  EXPECT_NE(info.find("# Memory"), std::string::npos);
+  EXPECT_NE(info.find("memory_model:payload_bytes"), std::string::npos);
+}
+
+TEST_F(CommandExecutorTest, InfoUnsupportedSectionReturnsError) {
+  Command cmd{CommandType::kInfo, {"clients"}};
+  RespValue result = executor_.execute(cmd);
+
+  ASSERT_EQ(result.type, RespValue::Type::kError);
+  EXPECT_EQ(std::get<std::string>(result.data), "ERR unsupported INFO section");
 }
 
 // UNKNOWN COMMAND TESTS
